@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import os
 import re
 import shutil
@@ -9,6 +10,9 @@ from common import get_workspace
 
 
 IMAGE_LINK_RE = re.compile(r"!\[([^\]]*)\]\(([^)\n]+)\)")
+LOCAL_CONFIG_PATH = Path(__file__).resolve().parents[1] / "paper-reading.local.json"
+OBSIDIAN_NOTES_ENV = "OBSIDIAN_PAPER_NOTES_DIR"
+OBSIDIAN_IMAGES_ENV = "OBSIDIAN_IMAGE_DIR"
 
 
 def normalize_markdown_target(target: str) -> tuple[str, bool]:
@@ -64,20 +68,86 @@ def build_link_map(copied_images: dict[str, Path], report_target: Path) -> dict[
     }
 
 
+def load_local_config() -> dict:
+    if not LOCAL_CONFIG_PATH.exists():
+        return {}
+    return json.loads(LOCAL_CONFIG_PATH.read_text(encoding="utf-8"))
+
+
+def save_local_config(config: dict) -> None:
+    LOCAL_CONFIG_PATH.write_text(
+        json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def prompt_for_path(label: str) -> str:
+    while True:
+        try:
+            value = input(f"{label}: ").strip()
+        except EOFError:
+            raise RuntimeError(
+                f"Missing {label}. Pass it as an argument, set the environment variable, "
+                f"or add it to {LOCAL_CONFIG_PATH}."
+            ) from None
+        if value:
+            return value
+        print("Path cannot be empty.")
+
+
+def resolve_obsidian_dirs(args: argparse.Namespace) -> tuple[Path, Path]:
+    config = load_local_config()
+    obsidian_config = config.setdefault("obsidian", {})
+
+    notes_dir = (
+        args.notes_dir
+        or os.environ.get(OBSIDIAN_NOTES_ENV)
+        or obsidian_config.get("notes_dir")
+    )
+    images_dir = (
+        args.images_dir
+        or os.environ.get(OBSIDIAN_IMAGES_ENV)
+        or obsidian_config.get("images_dir")
+    )
+    should_save = False
+
+    if not notes_dir:
+        notes_dir = prompt_for_path("Obsidian notes directory")
+        obsidian_config["notes_dir"] = notes_dir
+        should_save = True
+
+    if not images_dir:
+        images_dir = prompt_for_path("Obsidian images directory")
+        obsidian_config["images_dir"] = images_dir
+        should_save = True
+
+    if should_save:
+        save_local_config(config)
+        print("Saved local Obsidian paths:", LOCAL_CONFIG_PATH)
+
+    return Path(notes_dir).expanduser().resolve(), Path(images_dir).expanduser().resolve()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Copy a generated report and images into an Obsidian vault.")
     parser.add_argument("--input", required=True)
     parser.add_argument("--root", default=".")
-    parser.add_argument("--notes-dir", required=True, help="Obsidian folder for paper note Markdown files.")
-    parser.add_argument("--images-dir", required=True, help="Obsidian folder for copied paper images.")
+    parser.add_argument("--notes-dir", help="Obsidian folder for paper note Markdown files.")
+    parser.add_argument("--images-dir", help="Obsidian folder for copied paper images.")
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
-    notes_dir = Path(args.notes_dir).expanduser().resolve()
-    images_dir = Path(args.images_dir).expanduser().resolve()
+    notes_dir, images_dir = resolve_obsidian_dirs(args)
 
     workspace, ids = get_workspace(root, args.input)
     report_source = workspace / f"{ids['arxiv_id']}_阅读报告.md"
+    if not report_source.exists():
+        # Fallback: for non-arxiv papers, search for any _阅读报告.md in workspace
+        candidates = sorted(workspace.glob("*_阅读报告.md"))
+        if len(candidates) == 1:
+            report_source = candidates[0]
+        elif ids.get("report_filename"):
+            report_source = workspace / ids["report_filename"]
     if not report_source.exists():
         raise FileNotFoundError(f"Report not found: {report_source}")
 

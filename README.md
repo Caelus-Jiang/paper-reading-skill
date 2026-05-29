@@ -11,7 +11,7 @@
 [![Codex Skill](https://img.shields.io/badge/Codex-Skill-10a37f)](#paper-reviewer-final-v4-skill)
 
 <p>
-  <strong>一个面向论文精读、审稿式分析与公式理解增强的可执行 Codex Skill</strong>
+  <strong>一个面向论文精读、审稿式分析与公式理解增强的可执行 Skill</strong>
 </p>
 
 <p>
@@ -66,6 +66,8 @@ paper-reading-skill/
 └── templates/
 ```
 
+`SKILL.md` 是唯一内容源文件；各工具入口（`.codex` / `.cursor` / `.claude` / `.aone_copilot` / `.kiro`）下的 `skills/paper-reading/SKILL.md` 建议作为符号链接保留，用于让不同工具在各自约定路径发现同一个 skill。
+
 运行 pipeline 后，会在当前工作目录生成：
 
 ```text
@@ -91,6 +93,26 @@ bash scripts/bootstrap.sh
 
 如果你是把它作为 Codex skill 发布或分发，保留当前目录名 `paper-reading-skill/` 即可；公开调用名统一使用 `$paper-reading`。
 
+## 使用方法
+
+在新设备上使用时，首先通过 `git clone` 获取仓库：
+
+```bash
+git clone https://github.com/Caelus-Jiang/paper-reading-skill.git
+```
+之后根据自己实际使用的工具，如果现有的仓库中没有，那需要在仓库根目录重新创建软链接，例如：
+```bash
+cd paper-reading-skill
+mkdir -p .cursor/skills/paper-reading .claude/skills/paper-reading
+ln -sf ../../../SKILL.md .cursor/skills/paper-reading/SKILL.md
+ln -sf ../../../SKILL.md .claude/skills/paper-reading/SKILL.md
+```
+当然，对于AI时代的你，你也可以直接切换到根目录之后，在你的平台里让Agent自行完成上述的事情，参考提示词为：
+```text
+这个根目录是一个用于agent的skill，请你适配，将其作为可以在claude/qoder/vscode中可以执行的skill
+```
+之后在agent模式的输入框中，输入`/`，如果可以弹出`paper-reading`就说明配置成功了。
+
 ## 最小使用方式
 在触发 skill 的 prompt 中明确指定论文输入，例如：
 
@@ -112,7 +134,26 @@ bash scripts/run_pipeline.sh "2510.12796"
 
 ### 同步到 Obsidian
 
-`scripts/run_pipeline.sh` 只负责预处理、素材抽取和报告骨架生成，不会自动同步到 Obsidian。请先补全最终报告并完成自检，再手动运行同步脚本：
+`scripts/run_pipeline.sh` 只负责预处理、素材抽取和报告骨架生成，不会在报告还是骨架时同步到 Obsidian。按 skill 工作流执行时，最终报告补全并完成自检后会默认同步到 Obsidian；只有当用户明确要求“不同步 / 不要同步 / 只生成本地报告”时才跳过。
+
+首次使用建议从示例配置创建本机配置：
+
+```bash
+cp paper-reading.local.example.json paper-reading.local.json
+```
+
+然后填写：
+
+```json
+{
+  "obsidian": {
+    "notes_dir": "/path/to/vault/Papers",
+    "images_dir": "/path/to/vault/Attachments/Papers"
+  }
+}
+```
+
+也可以通过环境变量或命令行参数指定路径：
 
 ```bash
 export OBSIDIAN_PAPER_NOTES_DIR="/path/to/vault/Papers"
@@ -152,6 +193,7 @@ python3 scripts/sync_obsidian.py \
 2. 让 skill 运行 `scripts/run_pipeline.sh` 完成预处理。
 3. 在 `{arxiv_id}_{title}/{arxiv_id}_阅读报告.md` 中补全分析正文。
 4. 交付前重新检查图片、表格、公式和外部文献是否都已落到主报告。
+5. 默认同步到 Obsidian；若本次不想同步，需要在 prompt 中明确说明“不同步”。
 
 ## 面向发布的说明
 - `SKILL.md` 保留给模型的执行指令，不建议把它当 README 直接复用。

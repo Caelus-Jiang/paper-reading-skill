@@ -1,0 +1,6 @@
+{
+  "obsidian": {
+    "notes_dir": "/path/to/obsidian/paper/notes",
+    "images_dir": "/path/to/obsidian/paper/images"
+  }
+}

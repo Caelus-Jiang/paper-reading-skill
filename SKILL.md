@@ -45,10 +45,10 @@ bash scripts/bootstrap.sh
 
 你必须在生成的 `{arxiv_id}_{title}/{arxiv_id}_阅读报告.md` 上继续补全，而不是新建另一份平行报告。
 
-### 1.1 Obsidian 同步必须在最终报告完成后手动执行
+### 1.1 Obsidian 默认在最终报告完成后手动同步
 `scripts/run_pipeline.sh` 只负责预处理、素材抽取和报告骨架生成，**不得在流水线内部同步到 Obsidian**。原因是流水线结束时主报告仍可能只是骨架，中途同步会把模板占位符复制到 Obsidian。
 
-如果需要同步到 Obsidian，必须等以下步骤全部完成后再手动运行 `scripts/sync_obsidian.py`：
+默认行为：除非用户明确要求“不同步 / 不要同步到 Obsidian / 只生成本地报告”，否则必须在以下步骤全部完成后手动运行 `scripts/sync_obsidian.py`：
 - 主报告已经基于论文原文补全；
 - 图片、表格、公式解释、相关论文表、附录文献都已写入主报告；
 - 完成“完成前自检”。
@@ -58,12 +58,10 @@ bash scripts/bootstrap.sh
 ```bash
 python3 scripts/sync_obsidian.py \
   --input "<论文链接或 arxiv id>" \
-  --root output \
-  --notes-dir "$OBSIDIAN_PAPER_NOTES_DIR" \
-  --images-dir "$OBSIDIAN_IMAGE_DIR"
+  --root output
 ```
 
-若用户没有提供 Obsidian 目录，且环境变量 `OBSIDIAN_PAPER_NOTES_DIR` / `OBSIDIAN_IMAGE_DIR` 未设置，不要猜测目录；只交付主报告路径并说明未同步。
+`scripts/sync_obsidian.py` 会按顺序读取命令行参数、环境变量 `OBSIDIAN_PAPER_NOTES_DIR` / `OBSIDIAN_IMAGE_DIR`、本地配置文件 `paper-reading.local.json`。若都未设置，不要猜测目录；运行脚本让它询问用户提供 Obsidian 笔记目录与图片目录路径，并保存到 `paper-reading.local.json`，下次同步直接复用该配置。只有当用户本次明确要求不同步时，才跳过此步骤，并在最终回复中说明“已按要求跳过 Obsidian 同步”。
 
 ---
 
@@ -187,7 +185,7 @@ python3 scripts/sync_obsidian.py \
 10. 将本报告实际引用的关键外部文献清单写入报告附录
 11. 保存主报告，不要另起新文件替代
 12. 最后自检固定章节、链接、图片、表格、相关论文表、公式理解卡是否齐全
-13. 若需要同步到 Obsidian，且用户已提供目录或环境变量已设置，则在最终报告完成后手动运行 `scripts/sync_obsidian.py`；严禁在 `scripts/run_pipeline.sh` 结束后立即同步骨架
+13. 默认同步到 Obsidian：除非用户明确要求不同步，否则在最终报告完成并自检后手动运行 `scripts/sync_obsidian.py`；严禁在 `scripts/run_pipeline.sh` 结束后立即同步骨架
 
 ---
 
@@ -669,4 +667,4 @@ $$
 - 是否避免把单个数学符号写成代码样式，如 $L_t$、$a_i$、$z_{t+1}$
 - 是否保留固定章节
 - 是否让用户只看主报告也能了解论文大意
-- 若需要同步到 Obsidian，是否是在最终报告完成并自检后才运行 `scripts/sync_obsidian.py`
+- 除非用户明确要求不同步，是否在最终报告完成并自检后运行了 `scripts/sync_obsidian.py`

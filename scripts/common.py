@@ -134,10 +134,86 @@ def read_json(path: Path) -> Dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _find_cached_workspace(root: Path, arxiv_id: str):
+    """Search for an existing workspace directory matching the arxiv_id, and
+    return its metadata.json if present."""
+    candidates = sorted(
+        path for path in root.glob(f"{arxiv_id}_*") if path.is_dir()
+    )
+    for candidate in candidates:
+        meta_path = candidate / "metadata.json"
+        if meta_path.exists():
+            try:
+                return read_json(meta_path)
+            except (json.JSONDecodeError, OSError):
+                continue
+    return None
+
+
+def _search_metadata_by_input(root: Path, input_text: str) -> Optional[Dict]:
+    """Search all metadata.json files for one whose input field matches input_text."""
+    for meta_path in sorted(root.rglob("metadata.json")):
+        try:
+            meta = read_json(meta_path)
+            if meta.get("input") == input_text or meta.get("openreview_forum_url") == input_text or meta.get("openreview_pdf_url") == input_text:
+                return meta
+        except (json.JSONDecodeError, OSError):
+            continue
+    return None
+
+
 def get_workspace(root: Path, input_text: str):
+    # Try local cache first to avoid unnecessary network requests
+    parsed = extract_arxiv_id(input_text)
+    if parsed:
+        base_id, _version = parsed
+        cached = _find_cached_workspace(root, base_id)
+        if cached and cached.get("arxiv_id") == base_id:
+            ids = _build_ids_from_metadata(cached, input_text)
+            workspace = ensure_workspace(
+                root, ids["arxiv_id"], ids.get("title"), ids.get("workspace_name")
+            )
+            return workspace, ids
+
+    # Fallback: search metadata.json files by input URL (e.g., OpenReview links)
+    if not parsed:
+        cached = _search_metadata_by_input(root, input_text)
+        if cached:
+            ids = _build_ids_from_metadata(cached, input_text)
+            # Use workspace path directly from metadata if available
+            workspace_path = cached.get("workspace", "")
+            if workspace_path and Path(workspace_path).exists():
+                workspace = Path(workspace_path)
+            else:
+                workspace = ensure_workspace(
+                    root, ids["arxiv_id"], ids.get("title"), ids.get("workspace_name")
+                )
+            return workspace, ids
+
+    # Fall back to network fetch when no local cache exists
     ids = resolve_ids(input_text)
-    workspace = ensure_workspace(root, ids["arxiv_id"], ids.get("title"), ids.get("workspace_name"))
+    workspace = ensure_workspace(
+        root, ids["arxiv_id"], ids.get("title"), ids.get("workspace_name")
+    )
     return workspace, ids
+
+
+def _build_ids_from_metadata(cached: Dict, input_text: str) -> Dict:
+    return {
+        "input": cached.get("input", input_text),
+        "arxiv_id": cached.get("arxiv_id", ""),
+        "title": cached.get("title", ""),
+        "workspace_name": cached.get("workspace_name", ""),
+        "version": cached.get("version", ""),
+        "paper_id_with_version": cached.get("paper_id_with_version", ""),
+        "arxiv_abs_url": cached.get("arxiv_abs_url", ""),
+        "arxiv_pdf_url": cached.get("arxiv_pdf_url", ""),
+        "hjfy_url": cached.get("hjfy_url", ""),
+        "papers_cool_url": cached.get("papers_cool_url", ""),
+        "ar5iv_url": cached.get("ar5iv_url", ""),
+        "arxiv_src_url": cached.get("arxiv_src_url", ""),
+        "report_filename": cached.get("report_filename", ""),
+    }
 
 
 def http_get(url: str, timeout: int = 30):
