@@ -112,15 +112,19 @@ bash scripts/run_pipeline.sh "2510.12796"
 
 ### 同步到 Obsidian
 
-如果希望 pipeline 完成后自动把报告和图片复制进 Obsidian vault，可先设置两个环境变量：
+`scripts/run_pipeline.sh` 只负责预处理、素材抽取和报告骨架生成，不会自动同步到 Obsidian。请先补全最终报告并完成自检，再手动运行同步脚本：
 
 ```bash
 export OBSIDIAN_PAPER_NOTES_DIR="/path/to/vault/Papers"
 export OBSIDIAN_IMAGE_DIR="/path/to/vault/Attachments/Papers"
-bash scripts/run_pipeline.sh "2510.12796"
+python3 scripts/sync_obsidian.py \
+  --input "2510.12796" \
+  --root output \
+  --notes-dir "$OBSIDIAN_PAPER_NOTES_DIR" \
+  --images-dir "$OBSIDIAN_IMAGE_DIR"
 ```
 
-启用后，脚本会把 `{arxiv_id}_阅读报告.md` 复制到 `OBSIDIAN_PAPER_NOTES_DIR`，把 `images/` 下的图片复制到 `OBSIDIAN_IMAGE_DIR/{arxiv_id}_{title}/`，并将报告中的 `images/...` 图片链接改写为从笔记文件到图片文件的相对路径。未设置这两个变量时，pipeline 保持原有输出行为。
+同步脚本会把 `{arxiv_id}_阅读报告.md` 复制到 `OBSIDIAN_PAPER_NOTES_DIR`，把 `images/` 下的图片复制到 `OBSIDIAN_IMAGE_DIR/{arxiv_id}_{title}/`，并将报告中的 `images/...` 图片链接改写为从笔记文件到图片文件的相对路径。不要在报告仍是骨架或模板占位状态时同步。
 
 ## 输出结果
 最终交付物只有一个主文件：

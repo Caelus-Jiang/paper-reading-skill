@@ -45,6 +45,26 @@ bash scripts/bootstrap.sh
 
 你必须在生成的 `{arxiv_id}_{title}/{arxiv_id}_阅读报告.md` 上继续补全，而不是新建另一份平行报告。
 
+### 1.1 Obsidian 同步必须在最终报告完成后手动执行
+`scripts/run_pipeline.sh` 只负责预处理、素材抽取和报告骨架生成，**不得在流水线内部同步到 Obsidian**。原因是流水线结束时主报告仍可能只是骨架，中途同步会把模板占位符复制到 Obsidian。
+
+如果需要同步到 Obsidian，必须等以下步骤全部完成后再手动运行 `scripts/sync_obsidian.py`：
+- 主报告已经基于论文原文补全；
+- 图片、表格、公式解释、相关论文表、附录文献都已写入主报告；
+- 完成“完成前自检”。
+
+同步命令示例：
+
+```bash
+python3 scripts/sync_obsidian.py \
+  --input "<论文链接或 arxiv id>" \
+  --root output \
+  --notes-dir "$OBSIDIAN_PAPER_NOTES_DIR" \
+  --images-dir "$OBSIDIAN_IMAGE_DIR"
+```
+
+若用户没有提供 Obsidian 目录，且环境变量 `OBSIDIAN_PAPER_NOTES_DIR` / `OBSIDIAN_IMAGE_DIR` 未设置，不要猜测目录；只交付主报告路径并说明未同步。
+
 ---
 
 ## 2. 主报告必须“自包含”
@@ -167,6 +187,7 @@ bash scripts/bootstrap.sh
 10. 将本报告实际引用的关键外部文献清单写入报告附录
 11. 保存主报告，不要另起新文件替代
 12. 最后自检固定章节、链接、图片、表格、相关论文表、公式理解卡是否齐全
+13. 若需要同步到 Obsidian，且用户已提供目录或环境变量已设置，则在最终报告完成后手动运行 `scripts/sync_obsidian.py`；严禁在 `scripts/run_pipeline.sh` 结束后立即同步骨架
 
 ---
 
@@ -648,3 +669,4 @@ $$
 - 是否避免把单个数学符号写成代码样式，如 $L_t$、$a_i$、$z_{t+1}$
 - 是否保留固定章节
 - 是否让用户只看主报告也能了解论文大意
+- 若需要同步到 Obsidian，是否是在最终报告完成并自检后才运行 `scripts/sync_obsidian.py`
