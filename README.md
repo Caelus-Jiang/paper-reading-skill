@@ -24,6 +24,7 @@
 ## 功能版本记录
 | 日期 | 功能版本 | 对应分支 |
 |---|---|---|
+| 2026-05-29 | 支持通过环境变量同步报告和图片到 Obsidian | 当前分支 |
 | 2026-04-16 | 输出目录命名改为 `{arxiv_id}_{title}` | `release_v1.1` |
 | 2026-03-23 | 初始版本 | `release_v1` |
 
@@ -108,6 +109,18 @@ bash scripts/run_pipeline.sh "https://arxiv.org/abs/2510.12796"
 ```bash
 bash scripts/run_pipeline.sh "2510.12796"
 ```
+
+### 同步到 Obsidian
+
+如果希望 pipeline 完成后自动把报告和图片复制进 Obsidian vault，可先设置两个环境变量：
+
+```bash
+export OBSIDIAN_PAPER_NOTES_DIR="/path/to/vault/Papers"
+export OBSIDIAN_IMAGE_DIR="/path/to/vault/Attachments/Papers"
+bash scripts/run_pipeline.sh "2510.12796"
+```
+
+启用后，脚本会把 `{arxiv_id}_阅读报告.md` 复制到 `OBSIDIAN_PAPER_NOTES_DIR`，把 `images/` 下的图片复制到 `OBSIDIAN_IMAGE_DIR/{arxiv_id}_{title}/`，并将报告中的 `images/...` 图片链接改写为从笔记文件到图片文件的相对路径。未设置这两个变量时，pipeline 保持原有输出行为。
 
 ## 输出结果
 最终交付物只有一个主文件：
