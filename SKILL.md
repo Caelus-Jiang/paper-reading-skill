@@ -44,25 +44,27 @@ bash scripts/bootstrap.sh
 - `paper_id_with_version` 是带版本号的 ID，例如 `2510.12796v2`
 
 你必须在生成的 `{arxiv_id}_{title}/{arxiv_id}_阅读报告.md` 上继续补全，而不是新建另一份平行报告。
-
-### 1.1 Obsidian 默认在最终报告完成后手动同步
-`scripts/run_pipeline.sh` 只负责预处理、素材抽取和报告骨架生成，**不得在流水线内部同步到 Obsidian**。原因是流水线结束时主报告仍可能只是骨架，中途同步会把模板占位符复制到 Obsidian。
-
-默认行为：除非用户明确要求“不同步 / 不要同步到 Obsidian / 只生成本地报告”，否则必须在以下步骤全部完成后手动运行 `scripts/sync_obsidian.py`：
-- 主报告已经基于论文原文补全；
-- 图片、表格、公式解释、相关论文表、附录文献都已写入主报告；
-- 完成“完成前自检”。
-
-同步命令示例：
+当用户要求"读论文 / reviewer-level 分析 / 精读 arXiv / 生成固定格式阅读报告"时，必须先执行：
 
 ```bash
-python3 scripts/sync_obsidian.py \
-  --input "<论文链接或 arxiv id>" \
-  --root output
+bash scripts/run_pipeline.sh "<论文链接或 arxiv id>"
 ```
 
-`scripts/sync_obsidian.py` 会按顺序读取命令行参数、环境变量 `OBSIDIAN_PAPER_NOTES_DIR` / `OBSIDIAN_IMAGE_DIR`、本地配置文件 `paper-reading.local.json`。若都未设置，不要猜测目录；运行脚本让它询问用户提供 Obsidian 笔记目录与图片目录路径，并保存到 `paper-reading.local.json`，下次同步直接复用该配置。只有当用户本次明确要求不同步时，才跳过此步骤，并在最终回复中说明“已按要求跳过 Obsidian 同步”。
+流水线启动时会自动扫描 `output/` 目录，检测是否已存在相同论文的笔记（基于 arxiv_id 和标题匹配）。若发现重复，会提示用户确认是否覆盖；用户选择不覆盖则流水线退出。
 
+如需直接复用已有的论文笔记目录，可使用 `--reuse` 参数指定目录名：
+
+```bash
+bash scripts/run_pipeline.sh "<论文链接或 arxiv id>" --reuse "<已有目录名>"
+```
+
+如需跳过确认直接覆盖，可使用 `--force` 参数：
+
+```bash
+bash scripts/run_pipeline.sh "<论文链接或 arxiv id>" --force
+```
+
+若环境缺依赖，可先执行：
 ---
 
 ## 2. 主报告必须“自包含”

@@ -131,7 +131,7 @@ def resolve_obsidian_dirs(args: argparse.Namespace) -> tuple[Path, Path]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Copy a generated report and images into an Obsidian vault.")
     parser.add_argument("--input", required=True)
-    parser.add_argument("--root", default=".")
+    parser.add_argument("--root", default="output")
     parser.add_argument("--notes-dir", help="Obsidian folder for paper note Markdown files.")
     parser.add_argument("--images-dir", help="Obsidian folder for copied paper images.")
     args = parser.parse_args()

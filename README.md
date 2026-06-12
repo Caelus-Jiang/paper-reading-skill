@@ -24,7 +24,8 @@
 ## 功能版本记录
 | 日期 | 功能版本 | 对应分支 |
 |---|---|---|
-| 2026-05-29 | 支持通过环境变量同步报告和图片到 Obsidian | 当前分支 |
+| 2026-06-08 | 新增论文索引管理与重复检测，支持 Obsidian 目录索引 | 当前分支 |
+| 2026-05-29 | 支持通过环境变量同步报告和图片到 Obsidian | - |
 | 2026-04-16 | 输出目录命名改为 `{arxiv_id}_{title}` | `release_v1.1` |
 | 2026-03-23 | 初始版本 | `release_v1` |
 
@@ -56,14 +57,26 @@
 ## 目录结构
 ```text
 paper-reading-skill/
-├── SKILL.md
+├── SKILL.md                  # 给模型读取的执行规则与完整工作流
 ├── README.md
 ├── requirements.txt
-├── agents/
-├── examples/
-├── references/
+├── paper-reading.local.json  # 本机配置（Obsidian 路径等，不提交）
+├── agents/                   # Codex UI 展示配置
+├── examples/                 # 示例 prompt
+├── references/               # 写作规范、审稿标准等参考文档
 ├── scripts/
-└── templates/
+│   ├── run_pipeline.sh       # 主入口：串联预处理步骤
+│   ├── paper_index.py        # 论文索引管理与查重
+│   ├── check_duplicate.py    # pipeline 启动时的重复检测
+│   ├── prepare_workspace.py  # 工作区创建
+│   ├── fetch_sources.py      # 辅助源抓取（hjfy / papers.cool）
+│   ├── extract_references.py # 参考文献结构化
+│   ├── extract_images.py     # 论文插图提取
+│   ├── build_report_skeleton.py  # 报告骨架生成
+│   ├── validate_report_text.py   # 报告格式自检
+│   ├── sync_obsidian.py      # 同步到 Obsidian vault
+│   └── common.py             # 公共工具函数
+└── templates/                # 报告 Markdown 模板
 ```
 
 `SKILL.md` 是唯一内容源文件；各工具入口（`.codex` / `.cursor` / `.claude` / `.aone_copilot` / `.kiro`）下的 `skills/paper-reading/SKILL.md` 建议作为符号链接保留，用于让不同工具在各自约定路径发现同一个 skill。
@@ -132,6 +145,16 @@ bash scripts/run_pipeline.sh "https://arxiv.org/abs/2510.12796"
 bash scripts/run_pipeline.sh "2510.12796"
 ```
 
+流水线启动时会自动检测 `output/` 下是否已存在相同论文的笔记。若发现重复，会提示确认是否覆盖。如需复用已有笔记目录或跳过确认：
+
+```bash
+# 复用已有的论文笔记目录（跳过 pipeline，直接使用）
+bash scripts/run_pipeline.sh "2510.12796" --reuse "2510.12796_Title_Words"
+
+# 跳过确认，直接覆盖
+bash scripts/run_pipeline.sh "2510.12796" --force
+```
+
 ### 同步到 Obsidian
 
 `scripts/run_pipeline.sh` 只负责预处理、素材抽取和报告骨架生成，不会在报告还是骨架时同步到 Obsidian。按 skill 工作流执行时，最终报告补全并完成自检后会默认同步到 Obsidian；只有当用户明确要求“不同步 / 不要同步 / 只生成本地报告”时才跳过。
@@ -166,6 +189,44 @@ python3 scripts/sync_obsidian.py \
 ```
 
 同步脚本会把 `{arxiv_id}_阅读报告.md` 复制到 `OBSIDIAN_PAPER_NOTES_DIR`，把 `images/` 下的图片复制到 `OBSIDIAN_IMAGE_DIR/{arxiv_id}_{title}/`，并将报告中的 `images/...` 图片链接改写为从笔记文件到图片文件的相对路径。不要在报告仍是骨架或模板占位状态时同步。
+
+### 论文索引管理
+
+`scripts/paper_index.py` 维护一份轻量级的 JSON 索引文件 (`paper_index.json`)，用于快速查重和论文检索，避免每次启动 pipeline 时全量扫描目录。
+
+**自动建立索引**（推荐）——不带 `--root` 参数时，自动扫描 `output/` 和 `paper-reading.local.json` 中配置的 Obsidian 目录：
+
+```bash
+python3 scripts/paper_index.py --rebuild
+```
+
+**手动指定目录**：
+
+```bash
+# 扫描 output/ 工作区目录
+python3 scripts/paper_index.py --root output --rebuild
+
+# 扫描 Obsidian 笔记目录（递归扫描所有子文件夹中的 *_阅读报告.md）
+python3 scripts/paper_index.py --root ~/obsidian/papers --rebuild --flat
+```
+
+**查询**：
+
+```bash
+python3 scripts/paper_index.py --root output --query-id 2306.13649
+python3 scripts/paper_index.py --root output --query-title "On-Policy Distillation"
+```
+
+索引文件在以下时机自动更新：
+- **首次查重时**：若索引不存在，自动全量扫描生成
+- **pipeline 完成后**：自动追加新条目
+
+### 重复检测
+
+pipeline 启动时会通过索引文件检查是否已存在相同论文（基于 `arxiv_id` 和标题匹配）。若发现重复：
+- 交互模式下提示用户确认是否覆盖
+- `--force` 跳过确认直接覆盖
+- `--reuse <目录名>` 直接复用已有笔记目录
 
 ## 输出结果
 最终交付物只有一个主文件：

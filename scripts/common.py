@@ -151,11 +151,23 @@ def _find_cached_workspace(root: Path, arxiv_id: str):
 
 
 def _search_metadata_by_input(root: Path, input_text: str) -> Optional[Dict]:
-    """Search all metadata.json files for one whose input field matches input_text."""
+    """Search all metadata.json files for one whose input field matches input_text.
+
+    Also checks ``original_url`` to support non-arXiv papers whose metadata
+    was created manually (e.g. OpenAI CDN PDFs).
+    """
     for meta_path in sorted(root.rglob("metadata.json")):
         try:
             meta = read_json(meta_path)
-            if meta.get("input") == input_text or meta.get("openreview_forum_url") == input_text or meta.get("openreview_pdf_url") == input_text:
+            matchable_fields = (
+                meta.get("input"),
+                meta.get("openreview_forum_url"),
+                meta.get("openreview_pdf_url"),
+                meta.get("original_url"),
+            )
+            if input_text in matchable_fields:
+                # Inject workspace path so callers can locate the directory
+                meta.setdefault("workspace", str(meta_path.parent))
                 return meta
         except (json.JSONDecodeError, OSError):
             continue
@@ -163,6 +175,19 @@ def _search_metadata_by_input(root: Path, input_text: str) -> Optional[Dict]:
 
 
 def get_workspace(root: Path, input_text: str):
+    # ---- Direct directory path: skip all ID resolution ----
+    direct = Path(input_text)
+    if not direct.is_absolute():
+        direct = root / input_text
+    if direct.is_dir():
+        meta_path = direct / "metadata.json"
+        if meta_path.exists():
+            cached = read_json(meta_path)
+            ids = _build_ids_from_metadata(cached, input_text)
+            for sub in ["raw", "images", "cache", "logs"]:
+                (direct / sub).mkdir(parents=True, exist_ok=True)
+            return direct, ids
+
     # Try local cache first to avoid unnecessary network requests
     parsed = extract_arxiv_id(input_text)
     if parsed:
@@ -175,7 +200,7 @@ def get_workspace(root: Path, input_text: str):
             )
             return workspace, ids
 
-    # Fallback: search metadata.json files by input URL (e.g., OpenReview links)
+    # Fallback: search metadata.json files by input URL (e.g., OpenReview links, non-arXiv PDFs)
     if not parsed:
         cached = _search_metadata_by_input(root, input_text)
         if cached:
