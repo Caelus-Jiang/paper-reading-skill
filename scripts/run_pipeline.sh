@@ -57,7 +57,15 @@ WORKSPACE_DIR=$(echo "${WORKSPACE_OUTPUT}" | sed -n '1p')
 WORKSPACE_DIR_NAME=$(basename "${WORKSPACE_DIR}")
 PIPELINE_STATE_DIR="${WORKSPACE_DIR}/cache/pipeline_state"
 PIPELINE_LOG_DIR="${WORKSPACE_DIR}/logs/pipeline"
+PIPELINE_LOCK_DIR="${WORKSPACE_DIR}/cache/pipeline.lock"
 mkdir -p "${PIPELINE_STATE_DIR}" "${PIPELINE_LOG_DIR}"
+
+if ! mkdir "${PIPELINE_LOCK_DIR}" 2>/dev/null; then
+  echo "Another pipeline process is already using this workspace: ${WORKSPACE_DIR}" >&2
+  echo "If this is stale, remove the lock directory after confirming no pipeline is running: ${PIPELINE_LOCK_DIR}" >&2
+  exit 1
+fi
+trap 'rm -rf "${PIPELINE_LOCK_DIR}"' EXIT
 
 run_stage() {
   local stage_name="$1"
@@ -73,7 +81,9 @@ run_stage() {
   echo "[run] ${stage_name}"
   echo "# $(date '+%Y-%m-%d %H:%M:%S') ${stage_name}" > "${log_file}"
   if "$@" >> "${log_file}" 2>&1; then
-    date '+%Y-%m-%d %H:%M:%S' > "${done_marker}"
+    local marker_tmp="${done_marker}.$$"
+    date '+%Y-%m-%d %H:%M:%S' > "${marker_tmp}"
+    mv "${marker_tmp}" "${done_marker}"
     echo "[done] ${stage_name}"
     return 0
   fi
