@@ -186,8 +186,7 @@ bash scripts/run_pipeline.sh "<论文链接或 arxiv id>" --force
 9. 对最关键的 3–8 个公式，在对应方法/实验/理论位置补充就地公式解释
 10. 将本报告实际引用的关键外部文献清单写入报告附录
 11. 保存主报告，不要另起新文件替代
-12. 最后自检固定章节、链接、图片、表格、相关论文表、公式理解卡是否齐全
-13. 默认同步到 Obsidian：除非用户明确要求不同步，否则在最终报告完成并自检后手动运行 `scripts/sync_obsidian.py`；严禁在 `scripts/run_pipeline.sh` 结束后立即同步骨架
+12. 最后运行 `python3 scripts/finalize_report.py --paper-input "<论文输入>"`，按固定顺序完成 UTF-8 校验、严格报告质量检查和 Obsidian 同步；除非用户明确要求不同步，严禁跳过最终验收脚本
 
 ---
 
@@ -669,4 +668,6 @@ $$
 - 是否避免把单个数学符号写成代码样式，如 $L_t$、$a_i$、$z_{t+1}$
 - 是否保留固定章节
 - 是否让用户只看主报告也能了解论文大意
-- 除非用户明确要求不同步，是否在最终报告完成并自检后运行了 `scripts/sync_obsidian.py`
+- 是否运行了 `python3 scripts/finalize_report.py --paper-input "<论文输入>"`
+- 最终验收脚本是否已顺序完成 `validate_report_text.py`、`check_report_quality.py` 和 `sync_obsidian.py`
+- 若用户明确要求不同步，是否改用 `python3 scripts/finalize_report.py --paper-input "<论文输入>" --no-obsidian` 并保留校验步骤
