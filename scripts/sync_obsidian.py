@@ -128,21 +128,19 @@ def resolve_obsidian_dirs(args: argparse.Namespace) -> tuple[Path, Path]:
     return Path(notes_dir).expanduser().resolve(), Path(images_dir).expanduser().resolve()
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Copy a generated report and images into an Obsidian vault.")
-    parser.add_argument("--input", required=True)
-    parser.add_argument("--root", default="output")
-    parser.add_argument("--notes-dir", help="Obsidian folder for paper note Markdown files.")
-    parser.add_argument("--images-dir", help="Obsidian folder for copied paper images.")
-    args = parser.parse_args()
+def resolve_report_source(root: Path, paper_input: str | None, report_path: str | None) -> tuple[Path, Path]:
+    if report_path:
+        source = Path(report_path).expanduser().resolve()
+        if not source.exists():
+            raise FileNotFoundError(f"Report not found: {source}")
+        return source.parent, source
 
-    root = Path(args.root).resolve()
-    notes_dir, images_dir = resolve_obsidian_dirs(args)
+    if not paper_input:
+        raise ValueError("Pass either --paper-input or --report-path.")
 
-    workspace, ids = get_workspace(root, args.input)
+    workspace, ids = get_workspace(root, paper_input)
     report_source = workspace / f"{ids['arxiv_id']}_阅读报告.md"
     if not report_source.exists():
-        # Fallback: for non-arxiv papers, search for any _阅读报告.md in workspace
         candidates = sorted(workspace.glob("*_阅读报告.md"))
         if len(candidates) == 1:
             report_source = candidates[0]
@@ -150,6 +148,22 @@ def main() -> int:
             report_source = workspace / ids["report_filename"]
     if not report_source.exists():
         raise FileNotFoundError(f"Report not found: {report_source}")
+    return workspace, report_source
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Copy a generated report and images into an Obsidian vault.")
+    parser.add_argument("--paper-input", help="arXiv URL/id or workspace name used to locate the report.")
+    parser.add_argument("--report-path", help="Direct path to the Markdown report.")
+    parser.add_argument("--input", dest="legacy_input", help=argparse.SUPPRESS)
+    parser.add_argument("--root", default="output")
+    parser.add_argument("--notes-dir", help="Obsidian folder for paper note Markdown files.")
+    parser.add_argument("--images-dir", help="Obsidian folder for copied paper images.")
+    args = parser.parse_args()
+
+    root = Path(args.root).resolve()
+    notes_dir, images_dir = resolve_obsidian_dirs(args)
+    workspace, report_source = resolve_report_source(root, args.paper_input or args.legacy_input, args.report_path)
 
     notes_dir.mkdir(parents=True, exist_ok=True)
     images_dir.mkdir(parents=True, exist_ok=True)

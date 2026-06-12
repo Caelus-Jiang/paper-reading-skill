@@ -22,18 +22,33 @@ def count_private_use_chars(text: str) -> int:
     return sum(1 for ch in text if 0xE000 <= ord(ch) <= 0xF8FF)
 
 
-def build_report_path(root: Path, input_text: str) -> Path:
-    workspace, ids = get_workspace(root, input_text)
-    return workspace / f"{ids['arxiv_id']}_阅读报告.md"
+def resolve_report_path(root: Path, paper_input: str | None, report_path: str | None) -> Path:
+    if report_path:
+        return Path(report_path).expanduser().resolve()
+    if not paper_input:
+        raise ValueError("Pass either --paper-input or --report-path.")
+
+    workspace, ids = get_workspace(root, paper_input)
+    primary_report = workspace / f"{ids['arxiv_id']}_阅读报告.md"
+    if primary_report.exists():
+        return primary_report
+
+    candidates = sorted(workspace.glob("*_阅读报告.md"))
+    if len(candidates) == 1:
+        return candidates[0]
+    raise FileNotFoundError(f"Could not locate report in workspace: {workspace}")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--input", required=True)
+    parser = argparse.ArgumentParser(description="Validate report text encoding.")
+    parser.add_argument("--paper-input", help="arXiv URL/id or workspace name used to locate the report.")
+    parser.add_argument("--report-path", help="Direct path to the Markdown report.")
+    parser.add_argument("--input", dest="legacy_input", help=argparse.SUPPRESS)
     parser.add_argument("--root", default=".")
     args = parser.parse_args()
 
-    report_path = build_report_path(Path(args.root).resolve(), args.input)
+    paper_input = args.paper_input or args.legacy_input
+    report_path = resolve_report_path(Path(args.root).resolve(), paper_input, args.report_path)
     text = report_path.read_text(encoding="utf-8-sig")
 
     suspicious_counts = {token: text.count(token) for token in SUSPICIOUS_TOKENS if token in text}

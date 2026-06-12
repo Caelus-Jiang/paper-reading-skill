@@ -86,7 +86,7 @@ run_stage fetch_sources python "${ROOT_DIR}/scripts/fetch_sources.py" --input "$
 run_stage extract_references python "${ROOT_DIR}/scripts/extract_references.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
 run_stage extract_images python "${ROOT_DIR}/scripts/extract_images.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
 run_stage build_report_skeleton python "${ROOT_DIR}/scripts/build_report_skeleton.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
-run_stage validate_report_text python "${ROOT_DIR}/scripts/validate_report_text.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
+run_stage validate_report_text python "${ROOT_DIR}/scripts/validate_report_text.py" --paper-input "${INPUT}" --root "${OUTPUT_DIR}"
 run_stage paper_index python "${ROOT_DIR}/scripts/paper_index.py" --root "${OUTPUT_DIR}" --add "${WORKSPACE_DIR_NAME}"
 
 echo "Pipeline complete. Stage markers: ${PIPELINE_STATE_DIR}"
