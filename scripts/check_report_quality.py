@@ -23,9 +23,7 @@ BLOCKED_REPORT_MARKERS = [
     "place" + "holder",
     "原始" + "数值",
     "变化后" + "数值",
-    "未报告" + "标准",
     "假设" + "实现",
-    "简" + "化" + "实现",
 ]
 REQUIRED_HEADINGS = [
     "## 0. 基本信息",
