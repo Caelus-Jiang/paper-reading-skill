@@ -8,11 +8,9 @@ fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INPUT="$1"
-## Shift the first argument out
 shift
 OUTPUT_DIR="${PWD}/output"
 
-# Parse optional flags
 REUSE=""
 FORCE=""
 while [[ $# -gt 0 ]]; do
@@ -38,11 +36,11 @@ fi
 
 mkdir -p "${OUTPUT_DIR}"
 
-# Check for duplicate papers before proceeding
 REUSE_FLAG=""
 if [[ -n "${REUSE}" ]]; then
   REUSE_FLAG="--reuse ${REUSE}"
 fi
+
 DUP_EXIT=0
 python "${ROOT_DIR}/scripts/check_duplicate.py" --input "${INPUT}" --root "${OUTPUT_DIR}" ${REUSE_FLAG} ${FORCE} || DUP_EXIT=$?
 if [[ ${DUP_EXIT} -eq 1 ]]; then
@@ -55,21 +53,40 @@ fi
 
 WORKSPACE_OUTPUT=$(python "${ROOT_DIR}/scripts/prepare_workspace.py" --input "${INPUT}" --root "${OUTPUT_DIR}")
 echo "${WORKSPACE_OUTPUT}"
-WORKSPACE_DIR=$(echo "${WORKSPACE_OUTPUT}" | head -1)
+WORKSPACE_DIR=$(echo "${WORKSPACE_OUTPUT}" | sed -n '1p')
 WORKSPACE_DIR_NAME=$(basename "${WORKSPACE_DIR}")
+PIPELINE_STATE_DIR="${WORKSPACE_DIR}/cache/pipeline_state"
+PIPELINE_LOG_DIR="${WORKSPACE_DIR}/logs/pipeline"
+mkdir -p "${PIPELINE_STATE_DIR}" "${PIPELINE_LOG_DIR}"
 
-python "${ROOT_DIR}/scripts/fetch_sources.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
-python "${ROOT_DIR}/scripts/extract_references.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
-python "${ROOT_DIR}/scripts/extract_images.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
-python "${ROOT_DIR}/scripts/build_report_skeleton.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
-python "${ROOT_DIR}/scripts/validate_report_text.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
+run_stage() {
+  local stage_name="$1"
+  shift
+  local done_marker="${PIPELINE_STATE_DIR}/${stage_name}.done"
+  local log_file="${PIPELINE_LOG_DIR}/${stage_name}.log"
 
-# Update paper index after successful pipeline
-python "${ROOT_DIR}/scripts/paper_index.py" --root "${OUTPUT_DIR}" --add "${WORKSPACE_DIR_NAME}"
+  if [[ -f "${done_marker}" && -z "${FORCE}" ]]; then
+    echo "[skip] ${stage_name} already completed. Use --force to rerun."
+    return 0
+  fi
 
-echo "Pipeline complete."
+  echo "[run] ${stage_name}"
+  echo "# $(date '+%Y-%m-%d %H:%M:%S') ${stage_name}" > "${log_file}"
+  if "$@" >> "${log_file}" 2>&1; then
+    date '+%Y-%m-%d %H:%M:%S' > "${done_marker}"
+    echo "[done] ${stage_name}"
+    return 0
+  fi
 
-# tips for windows users
-# echo "Tip: before reading/editing Chinese reports in Windows PowerShell, run:"
-# echo "  \$utf8=[System.Text.UTF8Encoding]::new(\$false); chcp 65001 > \$null; [Console]::InputEncoding=\$utf8; [Console]::OutputEncoding=\$utf8; \$OutputEncoding=\$utf8"
-# echo "Re-run the text validator before delivery if the report was edited manually."
+  echo "[fail] ${stage_name}. See log: ${log_file}" >&2
+  return 1
+}
+
+run_stage fetch_sources python "${ROOT_DIR}/scripts/fetch_sources.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
+run_stage extract_references python "${ROOT_DIR}/scripts/extract_references.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
+run_stage extract_images python "${ROOT_DIR}/scripts/extract_images.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
+run_stage build_report_skeleton python "${ROOT_DIR}/scripts/build_report_skeleton.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
+run_stage validate_report_text python "${ROOT_DIR}/scripts/validate_report_text.py" --input "${INPUT}" --root "${OUTPUT_DIR}"
+run_stage paper_index python "${ROOT_DIR}/scripts/paper_index.py" --root "${OUTPUT_DIR}" --add "${WORKSPACE_DIR_NAME}"
+
+echo "Pipeline complete. Stage markers: ${PIPELINE_STATE_DIR}"
