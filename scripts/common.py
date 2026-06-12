@@ -243,3 +243,36 @@ def _build_ids_from_metadata(cached: Dict, input_text: str) -> Dict:
 
 def http_get(url: str, timeout: int = 30):
     return requests.get(url, timeout=timeout, headers={"User-Agent": "paper-reading-skill"})
+
+
+ALLOWED_MARKDOWN_CONTROL_CHARS = {"\n", "\r", "\t"}
+
+
+def find_disallowed_control_chars(text: str) -> list[tuple[int, int]]:
+    return [
+        (index, ord(char))
+        for index, char in enumerate(text)
+        if ord(char) < 32 and char not in ALLOWED_MARKDOWN_CONTROL_CHARS
+    ]
+
+
+def assert_markdown_text_is_safe(text: str, source: str = "markdown") -> None:
+    control_chars = find_disallowed_control_chars(text)
+    if not control_chars:
+        return
+
+    preview = ", ".join(
+        f"offset={offset}:0x{code_point:02x}"
+        for offset, code_point in control_chars[:10]
+    )
+    raise ValueError(
+        f"Refusing to write {source}: disallowed control characters detected. "
+        "This often happens when LaTeX is embedded in a normal Python string "
+        "instead of a raw string. "
+        f"Examples: {preview}"
+    )
+
+
+def write_markdown_report(path: Path, text: str) -> None:
+    assert_markdown_text_is_safe(text, str(path))
+    path.write_text(text, encoding="utf-8")

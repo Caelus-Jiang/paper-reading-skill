@@ -8,7 +8,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from common import write_markdown_report
 
 
 ROLE_TITLES = {
@@ -385,7 +385,7 @@ def main() -> int:
         rendered = rendered.replace(key, value)
 
     validate_rendered_report_has_images(rendered, report_path)
-    report_path.write_text(rendered, encoding="utf-8")
+    write_markdown_report(report_path, rendered)
     print(f"Generated report scaffold: {report_path}")
     return 0
 

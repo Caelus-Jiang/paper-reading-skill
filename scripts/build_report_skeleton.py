@@ -2,10 +2,10 @@
 import argparse
 from pathlib import Path
 
-from common import get_workspace, read_json
+from common import get_workspace, read_json, write_markdown_report
 
 
-SKELETON = """# 论文阅读报告
+SKELETON = r"""# 论文阅读报告
 
 ## 0. 基本信息
 - 论文标题：
@@ -183,16 +183,14 @@ def main():
     metadata = read_json(workspace / "metadata.json")
     report_path = workspace / f"{ids['arxiv_id']}_阅读报告.md"
 
-    report_path.write_text(
-        SKELETON.format(
-            input_url=metadata["input"],
-            paper_id_with_version=metadata["paper_id_with_version"],
-            arxiv_abs_url=metadata["arxiv_abs_url"],
-            hjfy_url=metadata["hjfy_url"],
-            papers_cool_url=metadata["papers_cool_url"],
-        ),
-        encoding="utf-8",
+    rendered_report = SKELETON.format(
+        input_url=metadata["input"],
+        paper_id_with_version=metadata["paper_id_with_version"],
+        arxiv_abs_url=metadata["arxiv_abs_url"],
+        hjfy_url=metadata["hjfy_url"],
+        papers_cool_url=metadata["papers_cool_url"],
     )
+    write_markdown_report(report_path, rendered_report)
     print("Report skeleton created:", report_path)
 
 
