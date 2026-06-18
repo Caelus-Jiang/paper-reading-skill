@@ -58,13 +58,36 @@ WORKSPACE_DIR_NAME=$(basename "${WORKSPACE_DIR}")
 PIPELINE_STATE_DIR="${WORKSPACE_DIR}/cache/pipeline_state"
 PIPELINE_LOG_DIR="${WORKSPACE_DIR}/logs/pipeline"
 PIPELINE_LOCK_DIR="${WORKSPACE_DIR}/cache/pipeline.lock"
+PIPELINE_PID_FILE="${PIPELINE_LOCK_DIR}/pid"
 mkdir -p "${PIPELINE_STATE_DIR}" "${PIPELINE_LOG_DIR}"
 
+# 尝试创建锁目录
 if ! mkdir "${PIPELINE_LOCK_DIR}" 2>/dev/null; then
-  echo "Another pipeline process is already using this workspace: ${WORKSPACE_DIR}" >&2
-  echo "If this is stale, remove the lock directory after confirming no pipeline is running: ${PIPELINE_LOCK_DIR}" >&2
-  exit 1
+  # 锁已存在，检查是否是残留锁
+  if [[ -f "${PIPELINE_PID_FILE}" ]]; then
+    OLD_PID=$(cat "${PIPELINE_PID_FILE}" 2>/dev/null || echo "")
+    if [[ -n "${OLD_PID}" ]] && ! kill -0 "${OLD_PID}" 2>/dev/null; then
+      # 进程已不存在，清理残留锁
+      echo "Found stale lock from PID ${OLD_PID} (process no longer running). Cleaning up..." >&2
+      rm -rf "${PIPELINE_LOCK_DIR}"
+      if ! mkdir "${PIPELINE_LOCK_DIR}" 2>/dev/null; then
+        echo "Failed to acquire lock after cleanup." >&2
+        exit 1
+      fi
+    else
+      echo "Another pipeline process is already using this workspace (PID: ${OLD_PID}): ${WORKSPACE_DIR}" >&2
+      echo "If this is stale, remove the lock directory after confirming no pipeline is running: ${PIPELINE_LOCK_DIR}" >&2
+      exit 1
+    fi
+  else
+    echo "Another pipeline process is already using this workspace: ${WORKSPACE_DIR}" >&2
+    echo "If this is stale, remove the lock directory after confirming no pipeline is running: ${PIPELINE_LOCK_DIR}" >&2
+    exit 1
+  fi
 fi
+
+# 写入当前进程 PID
+echo $$ > "${PIPELINE_PID_FILE}"
 trap 'rm -rf "${PIPELINE_LOCK_DIR}"' EXIT
 
 run_stage() {

@@ -114,10 +114,13 @@ def check_image_links(report_path: Path, text: str) -> tuple[int, list[str]]:
 
 def check_formula_compatibility(text: str) -> list[str]:
     issues: list[str] = []
-    if "\\tag{" in text:
-        issues.append("formula blocks must not use \\tag{}")
-    if re.search(r"```[^`]*\$[^`]*```", text, flags=re.S):
-        issues.append("code fences appear to contain math delimiters; verify math is not written as code")
+    # \tag{N} is allowed per SKILL.md for formula numbering inside display blocks
+    # Check each code block individually for $ symbols
+    code_blocks = re.findall(r'```[\s\S]*?```', text)
+    for block in code_blocks:
+        if '$' in block:
+            issues.append("code fences appear to contain math delimiters; verify math is not written as code")
+            break
     return issues
 
 
