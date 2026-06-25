@@ -7,20 +7,6 @@ from common import get_workspace, read_json, write_markdown_report
 
 SKELETON = r"""# 论文阅读报告
 
-## 0. 基本信息
-- 论文标题：
-- 作者：
-- 机构：
-- 来源（会议 / arXiv / 期刊）：
-- 年份：
-- 原始输入链接：{input_url}
-- 最终使用的 arXiv 版本化 ID：{paper_id_with_version}
-- 原论文 arXiv 链接：{arxiv_abs_url}
-- 幻觉翻译链接（hjfy）：{hjfy_url}
-- Cool Papers 链接：{papers_cool_url}
-- 论文研究方向：
-- 本文一句话概括：
-
 ## 1. 论文核心观点与主张的系统梳理
 ### 1.1 研究背景与动机
 

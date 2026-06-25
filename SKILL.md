@@ -500,23 +500,238 @@ $$
 
 ---
 
+## 7.5 Obsidian Flavored Markdown 写作规范（强制）
+
+本报告最终同步至 Obsidian vault，因此在生成阶段就必须使用 Obsidian Flavored Markdown 语法，而非事后转换。以下规则与标准 Markdown 公式规则并行生效。
+
+### 7.5.1 Frontmatter（必须）
+
+每份报告**必须**以 YAML frontmatter 开头，替代原来的"0. 基本信息"列表。模板如下：
+
+```yaml
+---
+title: "论文标题"
+authors: ["作者1", "作者2"]
+institutions: ["机构1", "机构2"]
+venue: "会议/arXiv/期刊"
+year: 2024
+arxiv_id: "2401.12345v2"
+arxiv_url: "https://arxiv.org/abs/2401.12345v2"
+hjfy_url: "https://hjfy.top/arxiv/2401.12345v2"
+papers_cool_url: "https://papers.cool/arxiv/2401.12345v2"
+research_area: "研究方向"
+one_liner: "本文一句话概括"
+tags:
+  - paper-reading
+  - 研究方向标签
+aliases:
+  - "论文简称或别名"
+cssclasses:
+  - paper-reading-report
+---
+```
+
+**规则**：
+- `tags` 必须包含 `paper-reading`，并根据研究方向追加 1–3 个语义标签（如 `reinforcement-learning`、`multimodal`、`reasoning`）
+- `aliases` 填写论文常用简称，便于 Obsidian 链接建议
+- `cssclasses` 固定为 `paper-reading-report`，用于自定义样式
+- frontmatter 之后紧跟 `# 论文阅读报告` 一级标题，不再重复列出基本信息
+
+**支持的属性类型**（按需选用）：
+
+| 类型 | 示例 | 论文报告中的用途 |
+|------|------|----------------|
+| Text | `title: "..."` | 标题、摘要、一句话概括 |
+| Number | `rating: 7.5` | 综合评分 |
+| Checkbox | `reproduced: false` | 是否已复现 |
+| Date | `date: 2024-01-15` | 阅读日期、发表日期 |
+| Date & Time | `read_at: 2024-01-15T14:30:00` | 精确阅读时间戳 |
+| List | `tags: [...]` | 标签列表、作者列表 |
+| Links | `related: "[[Other Paper]]"` | 关联 vault 中已有的论文笔记 |
+
+> **Links 类型特别说明**：`related` 属性用于声明与本论文有直接关联的 vault 笔记（如前置工作、对比方法、同系列论文）。值为 wikilink 字符串，支持多个：`related: ["[[Paper A]]", "[[Paper B]]"]`。这使得 Obsidian Graph View 能自动建立论文间的关联关系。
+
+### 7.5.2 Callouts（推荐使用）
+
+在以下场景**必须**使用 Obsidian callout 语法，增强可读性与视觉层次：
+
+| 场景 | Callout 类型 | 可用别名 | 示例 |
+|------|-------------|---------|------|
+| 核心主张 / Claims | `[!quote]` | `cite` | 直接引用论文原文关键句 |
+| 重要结论 / 价值总结 | `[!success]` | `check`, `done` | 6.1 / 6.4 中的正面评价 |
+| 关键质疑 / 反驳 | `[!warning]` | `caution`, `attention` | 5.x 中的系统性质疑 |
+| 理论边界 / 假设限制 | `[!danger]` | `error` | 2.4 / 5.2 中的严重适用性警告 |
+| 实验亮点 / 关键发现 | `[!tip]` | `hint`, `important` | 3.3 中值得注意的结果 |
+| 未解决 / 待验证 | `[!question]` | `help`, `faq` | 3.4 / 5.4 中的开放问题 |
+| 信息补充 / 背景知识 | `[!info]` | - | 4.1 / 附录 B 中的文献说明 |
+| 摘要 / 概览 | `[!abstract]` | `summary`, `tldr` | 可选，用于章节开头的快速导览 |
+| 已知缺陷 / Bug | `[!bug]` | - | 复现中发现的实现问题 |
+| 失败 / 缺失结果 | `[!failure]` | `fail`, `missing` | 实验未达预期或数据缺失 |
+| 待办 / 后续工作 | `[!todo]` | - | 未来可探索的方向 |
+| 示例 / 演示 | `[!example]` | - | toy example 或代码片段说明 |
+
+**格式要求**：
+```markdown
+> [!warning] 核心假设可能过强
+> 论文假设所有环境都是完全可观测的，但实际部署中传感器噪声...
+```
+
+**嵌套 callout**（用于多层质疑或分层解释）：
+```markdown
+> [!question] 该方法的泛化性存疑
+> > [!note] 作者仅在 in-domain 数据上测试
+> > 缺少 cross-domain 或 zero-shot 评估
+> > [!warning] 这直接影响 Claim 3 的可信度
+```
+
+**可折叠 callout**：用 `-`（默认收起）或 `+`（默认展开）后缀：
+```markdown
+> [!faq]- 详细推导过程（点击展开）
+> 此处放置冗长的中间步骤...
+```
+
+**自定义 CSS callout**（高级用法）：若 vault 已配置自定义 callout 样式，可使用：
+```css
+.callout[data-callout="repro-issue"] {
+  --callout-color: 255, 165, 0;
+  --callout-icon: lucide-alert-triangle;
+}
+```
+
+**规则**：
+- callout 标题应简洁（≤15字），正文展开详细说明
+- 不要滥用 callout；每个小节最多 2–3 个，避免视觉噪音
+- 嵌套不超过 2 层
+
+### 7.5.3 Wikilinks（推荐用于内部关联）
+
+当报告中引用的概念、方法、相关论文**可能在 Obsidian vault 中已有对应笔记**时，优先使用 wikilink：
+
+```markdown
+[[Transformer]]              链接到 vault 中的 Transformer 笔记
+[[Attention Is All You Need]] 链接到已有论文笔记
+[[RLHF#PPO 训练]]            链接到特定章节
+```
+
+**规则**：
+- 仅在 vault 中**确实可能存在**对应笔记时使用 wikilink
+- 对外部 URL（arXiv、GitHub 等）**仍然使用标准 Markdown 链接** `[text](url)`
+- 相关论文表（4.5）中，若某篇论文在 vault 中有笔记，可用 `[[论文名]]` 替代纯文本
+- `sync_obsidian.py` 会在同步时将无法解析的 wikilink 保留原样，不会报错
+
+### 7.5.4 Embeds（嵌入）
+
+图片插入支持两种语法，**优先使用标准 Markdown 语法**以保证跨平台兼容：
+
+```markdown
+![Figure 1 方法总览](images/figure_01.png)       ← 首选，通用兼容
+![[images/figure_01.png|600]]                     ← 备选，Obsidian 原生宽度控制
+```
+
+**支持的嵌入类型**：
+
+| 类型 | 语法 | 论文报告中的用途 |
+|------|------|----------------|
+| 笔记全文 | `![[Note Name]]` | 嵌入前置工作/对比方法的完整笔记 |
+| 笔记章节 | `![[Note#Heading]]` | 嵌入特定章节内容 |
+| 块引用 | `![[Note#^block-id]]` | 嵌入特定段落或列表块 |
+| 图片 | `![[image.png\|600]]` | 嵌入图片并指定宽度（保持宽高比） |
+| 图片尺寸 | `![[image.png\|640x480]]` | 嵌入图片并指定宽×高 |
+| PDF 页面 | `![[paper.pdf#page=3]]` | 附录中补充原始论文特定页面 |
+| PDF 高度 | `![[paper.pdf#height=400]]` | 控制 PDF 嵌入显示高度 |
+| 音频 | `![[audio.mp3]]` | 嵌入论文演讲/访谈录音（若有） |
+| Base 视图 | `![[BaseFile.base#View Name]]` | 嵌入 Dataview/Base 查询结果视图 |
+| 列表块 | `![[Note#^list-id]]` | 嵌入带 block ID 的列表 |
+| 搜索结果 | `` ```query `` + `tag:#paper-reading` | 动态嵌入符合搜索条件的笔记列表 |
+
+**外部图片宽度控制**（标准 Markdown 扩展语法）：
+```markdown
+![Alt text|300](https://example.com/image.png)
+```
+
+**规则**：
+- 默认使用 `![alt](path)` 语法
+- 仅在需要 Obsidian 特有的宽度控制（如 `|600`）时才用 `![[]]` embed 语法
+- `sync_obsidian.py` 会自动将相对路径重写为 vault 内的正确路径
+- PDF 嵌入仅限附录中补充原始论文页面时使用
+- 音频/Base/搜索嵌入为可选高级功能，仅在确实需要时使用
+
+### 7.5.5 Highlight（关键术语高亮）
+
+对以下类型的文本使用 `==highlight==` 语法：
+
+- 论文提出的**新方法名称**（首次出现时）
+- **核心指标名称**（如 ==FID==、==CLIP Score==）
+- 与基线的**关键差异点**
+- 质疑中指出的**核心缺陷关键词**
+
+**规则**：
+- 同一术语全文只高亮首次出现，避免过度标记
+- 不要高亮整句；仅高亮 2–6 字的关键词/短语
+- 数学符号**不用** highlight，仍用 `$...$`
+
+### 7.5.6 Tags（行内标签）
+
+除 frontmatter 中的 `tags` 外，正文中可使用行内标签标注细分主题：
+
+```markdown
+该方法属于 #generative-model/diffusion 范畴。
+```
+
+**标签字符规则**：
+- 可包含：任意语言字母、数字（不能作为首字符）、下划线 `_`、连字符 `-`、斜杠 `/`（用于嵌套）
+- 合法示例：`#reinforcement-learning`、`#multimodal/vision-language`、`#tag_with_underscores`、`#中文标签`
+- 非法示例：`#123abc`（数字开头）、`#tag with spaces`（含空格）
+
+**规则**：
+- 行内标签仅用于正文中的分类标注，不替代 frontmatter tags
+- 使用嵌套标签格式 `#大类/子类`
+- 每篇报告正文中行内标签不超过 5 个
+- frontmatter 中的 tags 同样遵循上述字符规则
+
+### 7.5.7 Comments（隐藏注释）
+
+执行过程中的调试信息、临时备注、未确认线索等，使用 Obsidian 注释语法隐藏：
+
+```markdown
+%% TODO: 待确认作者是否提供了消融实验的完整配置 %%
+%% sync_obsidian: 此图片路径将在同步时自动重写 %%
+```
+
+**规则**：
+- 最终报告中不应残留对读者无意义的调试注释
+- 可用于标记"已处理但需留痕"的执行状态
+- 阅读视图中完全不可见
+
+### 7.5.8 Mermaid 图表（可选）
+
+若需要用流程图辅助解释算法流程、模块关系，可使用 Mermaid：
+
+````markdown
+\`\`\`mermaid
+graph TD
+    A[Input] --> B[Encoder]
+    B --> C{Decision}
+    C -->|Yes| D[Module A]
+    C -->|No| E[Module B]
+\`\`\`
+````
+
+**规则**：
+- 仅在文字描述不足以清晰表达时使用
+- 节点可通过 `class NodeName internal-link;` 链接到 vault 笔记
+- 不要替代论文原始 Figure；Mermaid 仅作为补充理解工具
+
+---
+
 ## 8. 固定输出格式（不得更改章节名与顺序）
 
 # 论文阅读报告
 
-## 0. 基本信息
-- 论文标题：
-- 作者：
-- 机构：
-- 来源（会议 / arXiv / 期刊）：
-- 年份：
-- 原始输入链接：
-- 最终使用的 arXiv 版本化 ID：
-- 原论文 arXiv 链接：
-- 幻觉翻译链接（hjfy）：
-- Cool Papers 链接：
-- 论文研究方向：
-- 本文一句话概括：
+## 0. 基本信息（YAML Frontmatter）
+
+> 本节内容完全由 YAML frontmatter 承载，不再设置独立的 Markdown 章节标题。  
+> frontmatter 之后直接紧跟 `# 论文阅读报告` 一级标题，随后进入 §1。
 
 ## 1. 论文核心观点与主张的系统梳理
 ### 1.1 研究背景与动机
@@ -572,16 +787,19 @@ $$
 ## 9. 图片与表格处理规则（强制）
 
 ### 9.1 图片插入规则
-图片必须使用相对路径插入主报告，例如：
+图片必须使用相对路径插入主报告。**优先使用标准 Markdown 语法**以保证跨平台兼容：
 
 ```markdown
-![Figure 1 方法总览](images/figure_01.png)
+![Figure 1 方法总览](images/figure_01.png)          ← 首选
+![[images/figure_01.png|600]]                        ← 备选，需 Obsidian 宽度控制时使用
 ```
 
 每张图片都应满足：
 1. 出现在它真正服务的小节附近
 2. 紧跟 1–3 句解释，说明它展示了什么、为何重要
 3. 若论文正文对该图有明确引用，尽量把图片放在对应论述之后
+4. `sync_obsidian.py` 会在同步时自动将相对路径重写为 vault 内正确路径
+5. 仅在需要指定显示宽度时才使用 `![[]]` embed 语法（如 `|600`）
 
 ### 9.2 主结果表规则
 主结果表必须直接写入 `3.3` 或 `附录 A`，不能只截图或只放到其他文件。  
@@ -684,3 +902,11 @@ $$
 - 是否运行了 `python3 scripts/finalize_report.py --paper-input "<论文输入>"`
 - 最终验收脚本是否已顺序完成 `validate_report_text.py`、`check_report_quality.py` 和 `sync_obsidian.py`
 - 若用户明确要求不同步，是否改用 `python3 scripts/finalize_report.py --paper-input "<论文输入>" --no-obsidian` 并保留校验步骤
+- 是否以 YAML frontmatter 开头，且包含 title / authors / tags / arxiv_id 等必填字段（§7.5.1）
+- 是否在适当位置使用了 callout 语法（§7.5.2），且未滥用
+- 是否对关键术语使用了 `==highlight==` 高亮（§7.5.5），且仅高亮首次出现
+- 是否避免了在数学符号上使用 highlight 或反引号
+- 是否将外部 URL 使用标准 Markdown 链接，仅对 vault 内部笔记使用 wikilink（§7.5.3）
+- 是否图片默认使用 `![alt](path)` 语法，仅在需要宽度控制时用 `![[]]`（§7.5.4）
+- 是否正文行内标签不超过 5 个，且使用 `#大类/子类` 嵌套格式（§7.5.6）
+- 是否最终报告中无残留的调试注释（§7.5.7）

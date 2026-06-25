@@ -12,6 +12,9 @@ from common import get_workspace
 
 
 IMAGE_LINK_RE = re.compile(r"!\[([^\]]*)\]\(([^)\n]+)\)")
+OBSIDIAN_EMBED_RE = re.compile(r"!\[\[([^\]]+)\]\]")
+WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?\n)---\s*\n", re.DOTALL)
 LOCAL_CONFIG_PATH = Path(__file__).resolve().parents[1] / "paper-reading.local.json"
 OBSIDIAN_NOTES_ENV = "OBSIDIAN_PAPER_NOTES_DIR"
 OBSIDIAN_IMAGES_ENV = "OBSIDIAN_IMAGE_DIR"
@@ -31,7 +34,73 @@ def format_markdown_target(target: str) -> str:
     return normalized
 
 
+def has_frontmatter(markdown: str) -> bool:
+    """Check whether the markdown text starts with a YAML frontmatter block."""
+    return bool(FRONTMATTER_RE.match(markdown))
+
+
+def extract_frontmatter(markdown: str) -> dict[str, str] | None:
+    """Parse simple key: value pairs from an existing frontmatter block."""
+    match = FRONTMATTER_RE.match(markdown)
+    if not match:
+        return None
+    result: dict[str, str] = {}
+    for line in match.group(1).splitlines():
+        if ":" in line:
+            key, _, value = line.partition(":")
+            result[key.strip()] = value.strip().strip('"').strip("'")
+    return result
+
+
+def build_default_frontmatter(report_name: str, workspace_name: str) -> str:
+    """Generate a minimal frontmatter block when the report lacks one."""
+    title = report_name.replace("_阅读报告.md", "").replace("_", " ")
+    arxiv_id = workspace_name.split("_")[0] if "_" in workspace_name else workspace_name
+    tags_block = "tags:\n  - paper-reading\ncssclasses:\n  - paper-reading-report"
+    return (
+        "---\n"
+        f'title: "{title}"\n'
+        f'arxiv_id: "{arxiv_id}"\n'
+        f"{tags_block}\n"
+        "---\n\n"
+    )
+
+
+def ensure_frontmatter(markdown: str, report_name: str, workspace_name: str) -> str:
+    """Inject a default frontmatter if the report does not already have one."""
+    if has_frontmatter(markdown):
+        return markdown
+    return build_default_frontmatter(report_name, workspace_name) + markdown
+
+
+def convert_to_obsidian_embeds(markdown: str, link_map: dict[str, str]) -> str:
+    """Optionally convert standard Markdown image links to Obsidian embed syntax.
+
+    Only converts images whose paths appear in link_map (i.e., images that were
+    actually copied into the vault). External URLs and already-embedded images
+    are left untouched.
+    """
+    def replace(match: re.Match[str]) -> str:
+        alt_text = match.group(1)
+        raw_target = match.group(2)
+        target, _ = normalize_markdown_target(raw_target)
+        lookup_key = target.replace("\\", "/").lstrip("./")
+        if lookup_key not in link_map:
+            return match.group(0)
+        vault_relative = Path(link_map[lookup_key]).as_posix()
+        if alt_text:
+            return f"![[{vault_relative}|{alt_text}]]"
+        return f"![[{vault_relative}]]"
+
+    return IMAGE_LINK_RE.sub(replace, markdown)
+
+
 def rewrite_image_links(markdown: str, link_map: dict[str, str]) -> str:
+    """Rewrite standard Markdown image links to point at vault-local paths.
+
+    This preserves the standard ![alt](path) syntax. Wikilinks and Obsidian
+    embed syntax (![[]]) are never touched by this function.
+    """
     def replace(match: re.Match[str]) -> str:
         alt_text = match.group(1)
         raw_target = match.group(2)
@@ -161,6 +230,11 @@ def main() -> int:
     parser.add_argument("--root", default="output")
     parser.add_argument("--notes-dir", help="Obsidian folder for paper note Markdown files.")
     parser.add_argument("--images-dir", help="Obsidian folder for copied paper images.")
+    parser.add_argument(
+        "--obsidian-embeds",
+        action="store_true",
+        help="Convert standard Markdown image links to Obsidian ![[]] embed syntax.",
+    )
     args = parser.parse_args()
 
     root = Path(args.root).resolve()
@@ -175,12 +249,25 @@ def main() -> int:
     link_map = build_link_map(copied_images, report_target)
 
     report_text = report_source.read_text(encoding="utf-8-sig")
-    rewritten_report = rewrite_image_links(report_text, link_map)
+
+    # Ensure the report has a YAML frontmatter block
+    report_text = ensure_frontmatter(report_text, report_source.name, workspace.name)
+
+    # Rewrite image paths to vault-local relative paths
+    if args.obsidian_embeds:
+        rewritten_report = convert_to_obsidian_embeds(report_text, link_map)
+    else:
+        rewritten_report = rewrite_image_links(report_text, link_map)
+
     report_target.write_text(rewritten_report, encoding="utf-8")
 
+    had_frontmatter = has_frontmatter(report_source.read_text(encoding="utf-8-sig"))
     print("Obsidian report synced:", report_target)
     print("Obsidian images synced:", images_dir / workspace.name)
     print(f"Image links rewritten: {len(link_map)}")
+    print(f"Frontmatter: {'existing' if had_frontmatter else 'injected'}")
+    if args.obsidian_embeds:
+        print("Embed syntax: converted to Obsidian ![[]] format")
     return 0
 
 
