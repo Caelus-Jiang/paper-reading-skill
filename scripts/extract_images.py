@@ -118,7 +118,7 @@ def expand_tex_tree(main_tex: Path, src_dir: Path):
 def parse_tex_refs(segments):
     refs = []
     current_section = ""
-    figure_re = re.compile(r'\\begin\{figure\*?\}(.+?)\\end\{figure\*?\}', re.S)
+    figure_re = re.compile(r'\\begin\{(?:figure\*?|wrapfigure)\}(.+?)\\end\{(?:figure\*?|wrapfigure)\}', re.S)
     for seg in segments:
         txt = seg["text"]
         events = []
