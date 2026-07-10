@@ -170,7 +170,7 @@ cssclasses: ["paper-reading-report"]
                     if heading.startswith("### 3.3"):
                         blocks.extend(["", "| 数据集 | 方法 | 指标 | 数值 | 审稿人提示 |", "|---|---|---|---|---|", "| Fixture | Method | Score | 1.0 | Partial evidence |"])
                     if heading.startswith("### 4.5"):
-                        blocks.extend(["", "| 论文 | 作者 / 年份 | 来源 | 关系 | 链接 |", "|---|---|---|---|---|", "| Related | Author / 2024 | arXiv | Competing | https://arxiv.org/abs/2401.00001 |"])
+                        blocks.extend(["", "| 论文标题 | arXiv ID | 作者 / 年份 | 来源 / 类型 | 与原论文关系 | 一句话概述 |", "|---|---|---|---|---|---|", "| Related | 2401.00001 | Author / 2024 | arXiv preprint | Competing | A verified competing paper |"])
                 if chapter["file"] == "02_theory_and_method.md":
                     blocks.extend(["", "![Fixture figure](images/figure_01.png)", "The figure provides direct visual context for the method.", "", "式 (1) defines the fixture objective.", "", "$$ x = 1 \\tag{1} $$"])
                 if chapter["file"] == "07_appendices.md":

@@ -144,6 +144,14 @@ def check_required_tables(text: str, schema: dict) -> list[str]:
     claims = section_text(text, "### 1.3 核心观点（Claims）的逐条梳理")
     if "证据" not in claims:
         errors.append("claims section must distinguish evidence type/strength from reviewer conclusions")
+    related = section_text(text, "### 4.5 相关论文补充表")
+    table_rows = [line.strip() for line in related.splitlines() if line.strip().startswith("|")]
+    if table_rows:
+        header = re.sub(r"\s+", "", table_rows[0]).casefold()
+        if "arxivid" not in header and "arxiv" not in header:
+            errors.append("related-papers table must include an arXiv ID column for cached Obsidian lookup")
+    if re.search(r"https?://|\[[^]]+\]\(https?://", related):
+        errors.append("related-papers table must not contain network links; keep verified URLs in Appendix B")
     return errors
 
 

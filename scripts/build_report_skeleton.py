@@ -59,7 +59,7 @@ def table_for_heading(heading: str) -> str | None:
     if heading.startswith("### 3.3 "):
         return "| 设置 / 数据集 | 方法 | 指标 | 数值 | 审稿人提示 |\n|---|---|---|---|---|\n| PAPER_READING_PLACEHOLDER |  |  |  |  |"
     if heading.startswith("### 4.5 "):
-        return "| 论文标题 | 作者 / 年份 | 来源 | 与原论文关系 | 核查链接 |\n|---|---|---|---|---|\n| PAPER_READING_PLACEHOLDER |  |  |  |  |"
+        return "| 论文标题 | arXiv ID | 作者 / 年份 | 来源 / 类型 | 与原论文关系 | 一句话概述 |\n|---|---|---|---|---|---|\n| PAPER_READING_PLACEHOLDER |  |  |  |  |  |"
     return None
 
 

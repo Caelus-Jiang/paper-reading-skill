@@ -108,6 +108,7 @@ should_force_stage() {
   [[ ${FORCE_ALL} -eq 1 ]] && return 0
   [[ ${OVERWRITE_REPORT} -eq 1 && "${requested}" == "build_report_skeleton" ]] && return 0
   local value
+  [[ ${#FORCE_STAGES[@]} -eq 0 ]] && return 1
   for value in "${FORCE_STAGES[@]}"; do
     [[ "${value}" == "${requested}" ]] && return 0
   done

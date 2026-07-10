@@ -103,7 +103,7 @@ bash scripts/run_pipeline.sh "<论文输入>" --resume "<目录名>" --force-sta
 
 ### 4.4 真实文献对照
 
-只使用已打开并核对的一手、可验证来源。明确区分 peer-reviewed 论文与 preprint。找不到直接支持或反对证据时如实写明。
+只使用已打开并核对的一手、可验证来源。明确区分 peer-reviewed 论文与 preprint。找不到直接支持或反对证据时如实写明。将外部核查链接统一放入附录 B。
 
 执行外部检索时读取 [literature_search.md](references/literature_search.md)。社区博客仅可作为可选阅读入口，不得作为学术结论证据，也不得成为完成报告的硬条件。
 
@@ -134,6 +134,7 @@ bash scripts/run_pipeline.sh "<论文输入>" --resume "<目录名>" --force-sta
 - frontmatter 后立即接 `> [!abstract] 一句话概括`
 - 保留 schema 中全部章节并按固定顺序出现
 - 在 1.3 写主张—证据表，在 3.3 写主结果表，在 4.5 写相关论文表
+- 4.5 相关论文表写标题、基础 arXiv ID、作者/年份、来源/类型、关系和概述，不添加任何网络链接；标题保持纯文本
 - 在附录 B 写本报告实际使用且带核查链接的外部文献
 
 新工作区已在 `cache/chapters/` 创建章节片段。逐章填充，不要直接一次生成整篇。
@@ -188,6 +189,8 @@ python3 scripts/finalize_report.py \
 ```
 
 先预演可加 `--obsidian-dry-run`。覆盖已有不同笔记必须显式加 `--obsidian-overwrite`；同步器会备份旧笔记，只复制正文实际引用的图片，并拒绝替报告补造 frontmatter。
+
+同步器使用 Obsidian 笔记目录下的隐藏增量索引 `.paper-reading-index.json` 查找相关论文阅读报告。规范报告名固定为 `{arxiv_id}_阅读报告.md`，因此优先按基础 arXiv ID 做常数时间查找；只有缺少 ID 时才回退到规范化标题。唯一命中时把 4.5 的论文标题改写为 `[[{arxiv_id}_阅读报告|论文标题]]`，未命中或命中歧义时不添加链接。首次同步会全量建索引，之后每次同步只增量更新当前报告；vault 在同步器之外发生批量改动后，显式加 `--rebuild-related-index` 重建。
 
 ## 8. 失败与不确定性
 

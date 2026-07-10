@@ -25,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--images-dir")
     parser.add_argument("--obsidian-overwrite", action="store_true")
     parser.add_argument("--obsidian-dry-run", action="store_true")
+    parser.add_argument("--rebuild-related-index", action="store_true")
     return parser.parse_args()
 
 
@@ -64,6 +65,8 @@ def main() -> int:
         sync.append("--overwrite")
     if args.obsidian_dry_run:
         sync.append("--dry-run")
+    if args.rebuild_related_index:
+        sync.append("--rebuild-related-index")
     run("sync accepted report to Obsidian", sync)
     print("[finalize] report acceptance and explicit sync complete")
     return 0

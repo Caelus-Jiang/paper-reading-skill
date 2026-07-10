@@ -34,6 +34,24 @@ class ReportValidationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             sync_obsidian.validate_frontmatter("## 1. report\n")
 
+    def test_related_paper_network_links_are_rejected(self):
+        schema = load_report_schema()
+        text = """### 1.3 核心观点（Claims）的逐条梳理
+| 主张 | 证据 |
+|---|---|
+| C1 | E1 |
+### 3.3 实验结果的解释力度
+| 方法 | 指标 |
+|---|---|
+| M | 1 |
+### 4.5 相关论文补充表
+| 论文标题 | arXiv ID |
+|---|---|
+| [Paper](https://arxiv.org/abs/2401.00001) | 2401.00001 |
+"""
+        errors = check_report_quality.check_required_tables(text, schema)
+        self.assertTrue(any("network links" in error for error in errors))
+
 
 if __name__ == "__main__":
     unittest.main()

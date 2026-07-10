@@ -16,6 +16,15 @@ from pathlib import Path
 import yaml
 
 from common import atomic_write_text, get_workspace, write_json
+from paper_index import (
+    FLAT_INDEX_FILENAME,
+    load_index,
+    load_or_rebuild_flat_index,
+    lookup_flat_note,
+    rebuild_lookup_maps,
+    scan_flat_notes,
+    upsert_flat_note,
+)
 from report_schema import load_report_schema
 
 
@@ -24,6 +33,7 @@ FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.S)
 LOCAL_CONFIG_PATH = Path(__file__).resolve().parents[1] / "paper-reading.local.json"
 OBSIDIAN_NOTES_ENV = "OBSIDIAN_PAPER_NOTES_DIR"
 OBSIDIAN_IMAGES_ENV = "OBSIDIAN_IMAGE_DIR"
+RELATED_PAPERS_HEADING = "### 4.5 相关论文补充表"
 
 
 def normalize_markdown_target(target: str) -> str:
@@ -122,6 +132,148 @@ def rewrite_image_links(markdown: str, link_map: dict[str, str], obsidian_embeds
     return IMAGE_LINK_RE.sub(replace, markdown)
 
 
+def split_table_row(line: str) -> list[str]:
+    content = line.strip().strip("|")
+    cells = []
+    current = []
+    escaped = False
+    for character in content:
+        if escaped:
+            current.append(character)
+            escaped = False
+        elif character == "\\":
+            current.append(character)
+            escaped = True
+        elif character == "|":
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(character)
+    cells.append("".join(current).strip())
+    return cells
+
+
+def plain_paper_title(value: str) -> str:
+    markdown_link = re.fullmatch(r"\[([^]]+)\]\(https?://[^)]+\)", value.strip())
+    if markdown_link:
+        return markdown_link.group(1).strip()
+    wikilink = re.fullmatch(r"\[\[([^\]]+)\]\]", value.strip())
+    if wikilink:
+        target = wikilink.group(1)
+        return target.split("|", 1)[-1].replace("\\|", "|").strip()
+    return value.strip()
+
+
+def plain_non_link_text(value: str) -> str:
+    stripped = value.strip()
+    if re.fullmatch(r"https?://\S+", stripped):
+        return ""
+    markdown_link = re.fullmatch(r"\[([^]]+)\]\(https?://[^)]+\)", stripped)
+    return markdown_link.group(1).strip() if markdown_link else stripped
+
+
+def table_cell(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip().replace("|", "\\|")
+
+
+def _column_index(headers: list[str], *needles: str) -> int | None:
+    for index, header in enumerate(headers):
+        normalized = re.sub(r"\s+", "", header).casefold()
+        if any(needle.casefold() in normalized for needle in needles):
+            return index
+    return None
+
+
+def _cell(cells: list[str], index: int | None) -> str:
+    return cells[index].strip() if index is not None and index < len(cells) else ""
+
+
+def rewrite_related_papers_table(markdown: str, index_data: dict, notes_root: Path) -> tuple[str, dict]:
+    """Canonicalize §4.5 and inject vault wikilinks only for unique cached matches."""
+    heading_match = re.search(rf"(?m)^{re.escape(RELATED_PAPERS_HEADING)}\s*$", markdown)
+    stats = {"rows": 0, "matched": 0, "missing": 0, "ambiguous": 0, "matches": []}
+    if not heading_match:
+        return markdown, stats
+    next_heading = re.search(r"(?m)^#{1,3}\s+", markdown[heading_match.end():])
+    section_end = heading_match.end() + next_heading.start() if next_heading else len(markdown)
+    section = markdown[heading_match.end():section_end]
+    lines = section.splitlines()
+    table_start = next((index for index, line in enumerate(lines) if line.strip().startswith("|") and line.strip().endswith("|")), None)
+    if table_start is None:
+        return markdown, stats
+    table_end = table_start
+    while table_end < len(lines) and lines[table_end].strip().startswith("|") and lines[table_end].strip().endswith("|"):
+        table_end += 1
+    table_lines = lines[table_start:table_end]
+    if len(table_lines) < 2:
+        return markdown, stats
+
+    headers = split_table_row(table_lines[0])
+    title_index = _column_index(headers, "论文标题", "论文")
+    arxiv_index = _column_index(headers, "arxivid", "arxivid", "arxiv")
+    author_index = _column_index(headers, "作者/年份", "作者", "年份")
+    source_index = _column_index(headers, "来源/类型", "来源", "类型", "venue")
+    relation_index = _column_index(headers, "与原论文关系", "关系")
+    overview_index = _column_index(headers, "一句话概述", "概述", "证据备注", "备注")
+    link_index = _column_index(headers, "核查链接", "网络链接", "链接")
+
+    output = [
+        "| 论文标题 | arXiv ID | 作者 / 年份 | 来源 / 类型 | 与原论文关系 | 一句话概述 |",
+        "|---|---|---|---|---|---|",
+    ]
+    for line in table_lines[2:]:
+        cells = split_table_row(line)
+        if not cells or all(not cell.strip() for cell in cells):
+            continue
+        raw_title = _cell(cells, title_index)
+        title = plain_paper_title(raw_title)
+        explicit_id = _cell(cells, arxiv_index)
+        legacy_link = _cell(cells, link_index)
+        arxiv_match = re.search(
+            r"\d{4}\.\d{4,5}(?:v\d+)?",
+            f"{explicit_id} {legacy_link} {raw_title} {' '.join(cells)}",
+        )
+        arxiv_id = arxiv_match.group(0) if arxiv_match else ""
+        entry, status = lookup_flat_note(
+            index_data,
+            notes_root,
+            arxiv_id=arxiv_id,
+            title=title,
+            hydrate_titles_on_miss=not bool(arxiv_id),
+        )
+        rendered_title = table_cell(title)
+        if entry:
+            rendered_title = f"[[{entry['wikilink_target']}\\|{table_cell(title)}]]"
+            stats["matched"] += 1
+            stats["matches"].append(
+                {
+                    "arxiv_id": arxiv_id,
+                    "title": title,
+                    "relative_path": entry["relative_path"],
+                    "wikilink_target": entry["wikilink_target"],
+                }
+            )
+        else:
+            stats[status] = stats.get(status, 0) + 1
+        output.append(
+            "| " + " | ".join(
+                [
+                    rendered_title,
+                    table_cell(arxiv_id),
+                    table_cell(_cell(cells, author_index)),
+                    table_cell(plain_non_link_text(_cell(cells, source_index))),
+                    table_cell(_cell(cells, relation_index)),
+                    table_cell(_cell(cells, overview_index)),
+                ]
+            ) + " |"
+        )
+        stats["rows"] += 1
+
+    lines[table_start:table_end] = output
+    rewritten_section = "\n".join(lines)
+    return markdown[:heading_match.end()] + rewritten_section + markdown[section_end:], stats
+
+
 def load_config() -> dict:
     if not LOCAL_CONFIG_PATH.exists():
         return {}
@@ -164,19 +316,44 @@ def main() -> int:
     parser.add_argument("--obsidian-embeds", action="store_true")
     parser.add_argument("--overwrite", action="store_true", help="Replace an existing different note after creating a backup.")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--rebuild-related-index",
+        action="store_true",
+        help="Explicitly rescan all Obsidian paper notes before resolving related-paper wikilinks.",
+    )
     args = parser.parse_args()
 
     workspace, report_source = resolve_source(args)
     if not report_source.is_file():
         raise FileNotFoundError(f"Report not found: {report_source}")
     markdown = report_source.read_text(encoding="utf-8-sig")
-    validate_frontmatter(markdown)
+    frontmatter = validate_frontmatter(markdown)
     notes_dir, images_dir = resolve_dirs(args)
     report_target = notes_dir / report_source.name
 
+    related_index_path = notes_dir / FLAT_INDEX_FILENAME
+    if args.dry_run:
+        if related_index_path.exists() and not args.rebuild_related_index:
+            related_index = load_index(notes_dir, flat=True, index_path=related_index_path)
+        else:
+            related_index = {
+                "schema_version": 2,
+                "layout": "flat",
+                "root": str(notes_dir),
+                "papers": scan_flat_notes(notes_dir),
+            }
+            rebuild_lookup_maps(related_index)
+    else:
+        related_index = load_or_rebuild_flat_index(
+            notes_dir,
+            rebuild=args.rebuild_related_index,
+            index_path=related_index_path,
+        )
+
     images = referenced_images(markdown, workspace)
     copied = copy_referenced_images(images, workspace, images_dir, dry_run=args.dry_run)
-    rewritten = rewrite_image_links(markdown, build_link_map(copied, report_target), args.obsidian_embeds)
+    rewritten, related_stats = rewrite_related_papers_table(markdown, related_index, notes_dir)
+    rewritten = rewrite_image_links(rewritten, build_link_map(copied, report_target), args.obsidian_embeds)
 
     if report_target.exists() and report_target.read_text(encoding="utf-8-sig") != rewritten:
         if not args.overwrite:
@@ -187,6 +364,13 @@ def main() -> int:
     if not args.dry_run:
         notes_dir.mkdir(parents=True, exist_ok=True)
         atomic_write_text(report_target, rewritten)
+        related_index = upsert_flat_note(
+            notes_dir,
+            report_target,
+            metadata=frontmatter,
+            index_data=related_index,
+            index_path=related_index_path,
+        )
         write_json(
             workspace / "logs" / "obsidian_sync.json",
             {
@@ -195,10 +379,21 @@ def main() -> int:
                 "source_sha256": sha256(report_source),
                 "target": str(report_target),
                 "images": {key: str(value) for key, value in copied.items()},
+                "related_paper_links": related_stats,
+                "related_index": {
+                    "path": str(related_index_path),
+                    "updated_at": related_index.get("updated_at", ""),
+                    "paper_count": len(related_index.get("papers", [])),
+                },
             },
         )
     print(("Dry-run" if args.dry_run else "Synced") + f": {report_target}")
     print("Referenced images:", len(copied))
+    print(
+        "Related paper wikilinks: "
+        f"{related_stats['matched']} matched, {related_stats['missing']} missing, "
+        f"{related_stats['ambiguous']} ambiguous"
+    )
     return 0
 
 
