@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 import re
 import unicodedata
 from pathlib import Path
@@ -127,7 +128,7 @@ def ensure_workspace(root: Path, arxiv_id: str, title: Optional[str] = None, wor
 
 
 def write_json(path: Path, payload: Dict) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
 
 def read_json(path: Path) -> Dict:
@@ -191,9 +192,11 @@ def get_workspace(root: Path, input_text: str):
     # Try local cache first to avoid unnecessary network requests
     parsed = extract_arxiv_id(input_text)
     if parsed:
-        base_id, _version = parsed
+        base_id, requested_version = parsed
         cached = _find_cached_workspace(root, base_id)
-        if cached and cached.get("arxiv_id") == base_id:
+        cached_version = str(cached.get("version") or "") if cached else ""
+        version_matches = not requested_version or requested_version == cached_version
+        if cached and cached.get("arxiv_id") == base_id and version_matches:
             ids = _build_ids_from_metadata(cached, input_text)
             workspace = ensure_workspace(
                 root, ids["arxiv_id"], ids.get("title"), ids.get("workspace_name")
@@ -245,6 +248,27 @@ def http_get(url: str, timeout: int = 30):
     return requests.get(url, timeout=timeout, headers={"User-Agent": "paper-reading-skill"})
 
 
+def atomic_write_bytes(path: Path, content: bytes) -> None:
+    """Write a file atomically so interrupted stages never leave valid-looking partial output."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_bytes(content)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(text, encoding=encoding)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 ALLOWED_MARKDOWN_CONTROL_CHARS = {"\n", "\r", "\t"}
 
 
@@ -275,4 +299,4 @@ def assert_markdown_text_is_safe(text: str, source: str = "markdown") -> None:
 
 def write_markdown_report(path: Path, text: str) -> None:
     assert_markdown_text_is_safe(text, str(path))
-    path.write_text(text, encoding="utf-8")
+    atomic_write_text(path, text)

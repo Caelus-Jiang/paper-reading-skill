@@ -1,120 +1,91 @@
-# inline-table-and-formula-template.md
+# 就地表格与公式规范
 
-## 主结果表模板（应直接放入 3.3 或附录 A）
-| 设置 / 数据集 | 方法 | 指标 | 数值 | 备注 |
-|---|---|---|---|---|
-|  |  |  |  |  |
+## 目录
 
-## 消融表模板（应直接放入 3.4 或附录 A）
-| 消融项 | 变化设置 | 数据集 / 设置 | 指标 | 原始数值 | 变化后数值 | 结论 |
-|---|---|---|---|---|---|---|
-|  |  |  |  |  |  |  |
+- 主张与实验表
+- 公式解释
+- 数学格式
+- 图片定位
 
-## 相关论文表模板（应直接放入 4.5）
-| 序号 | 论文标题 | 作者 / 年份 | 来源 | 与原论文关系 | 一句话概述 |
+## 主张与实验表
+
+### 主张—证据表（1.3）
+
+| 主张 ID | 主张内容 | 原文位置 | 证据类型 | 证据强度 | Reviewer 结论 |
 |---|---|---|---|---|---|
-| 1 |  |  |  |  |  |
+| C1 |  |  | 主实验 / 理论 / 消融 | 强 / 部分 / 间接 / 不足 |  |
 
-## 就地公式解释模板（应直接放在公式首次关键出现的位置附近，而不是集中堆在一节）
-- 公式编号：
-- 公式原文：
-- 在论文中的位置：
-- 这条公式要解决什么问题：
-- 符号说明：
-- 自然语言翻译：
-- 分项拆解：
-- 与上一条公式的关系：
-- 与下一条公式的关系：
-- 训练 / 推理中的作用：
-- 代码中的典型对应：
-- 极简数值例子：
-- 若删去该项会怎样：
-- 是否依赖强假设：
-- 阅读难点提醒：
+### 实验—主张矩阵（3.1）
 
+| 实验组 | 对应主张 | 是否充分验证 | 缺失项 |
+|---|---|---|---|
+|  |  |  |  |
 
-## 附加实验 / 泛化 / scaling law 表模板（应直接放入 3.3、3.4 或附录 A）
-| 实验类型 | 设置 | 指标1 | 指标2 | 关键结论 |
+### 主结果表（3.3）
+
+| 设置 / 数据集 | 方法 | 指标 | 数值 | 审稿人提示 |
 |---|---|---|---|---|
 |  |  |  |  |  |
 
+### 关键消融表（3.3 或 3.4）
 
-## 数学公式格式示例
-行内公式示例：
-`损失函数写成 $\mathcal{L}_{total} = \mathcal{L}_{action} + \alpha \mathcal{L}_{wm}$`
+| 消融项 | 变化设置 | 指标 | 原始数值 | 变化后数值 | 审稿人提示 |
+|---|---|---|---|---|---|
+|  |  |  |  |  |  |
 
-跨行公式示例：
+## 公式解释
+
+在公式首次成为关键论据的位置附近解释：
+
+- 该公式负责什么
+- 符号和每一项的含义
+- 自然语言直译
+- 训练/推理中的实现映射
+- 依赖的假设
+- 删除或替换该项会怎样
+- 必要时给极简数值例子
+
+公式解释跟着上下文出现，不集中放到单独“公式卡”章节。
+
+## 数学格式
+
+行内公式：`$\mathcal{L}$`。
+
+单行 display：
+
 ```markdown
-$$
-\mathcal{L}_{total} = \mathcal{L}_{action} + \alpha \mathcal{L}_{wm}
-$$
+$$ \mathcal{L} = \mathcal{L}_{\mathrm{task}} + \lambda \mathcal{L}_{\mathrm{aux}} \tag{1} $$
 ```
 
+多行 display：
 
-## 公式编号推荐写法
-推荐：
 ```markdown
-式 (7) 定义了总奖励函数：
-
-$$
-R = \lambda_{\text{traj}} R_{\text{traj}}
- + \lambda_{\text{fmt}} R_{\text{fmt}}
- + \lambda_{\text{goal}} R_{\text{goal}}
-$$
-```
-
-不推荐：
-```markdown
-$$
-R = \lambda_{\text{traj}} R_{\text{traj}}
- + \lambda_{\text{fmt}} R_{\text{fmt}}
- + \lambda_{\text{goal}} R_{\text{goal}}
-\tag{7}
-$$
-```
-
-
-## 兼容性更高的公式写法
-
-### 推荐：单行 display 公式
-```markdown
-式 (7) 定义总奖励函数：
-
-$$ R = \lambda_{\text{traj}} R_{\text{traj}} + \lambda_{\text{fmt}} R_{\text{fmt}} + \lambda_{\text{goal}} R_{\text{goal}} $$
-```
-
-### 推荐：多行时使用 aligned
-```markdown
-式 (7) 定义总奖励函数：
-
 $$
 \begin{aligned}
-R &= \lambda_{\text{traj}} R_{\text{traj}} \\
-&\quad + \lambda_{\text{fmt}} R_{\text{fmt}} \\
-&\quad + \lambda_{\text{goal}} R_{\text{goal}}
+\mathcal{L} ={}& \mathcal{L}_{\mathrm{task}} \\
+&+ \lambda \mathcal{L}_{\mathrm{aux}} \tag{2}
 \end{aligned}
 $$
 ```
 
-### 兼容性降级写法
-```text
-式 (7)：
-R = λ_traj * R_traj + λ_fmt * R_fmt + λ_goal * R_goal
-```
+规则：
 
+- 只有需要正文引用的关键公式才编号。
+- 编号从 1 连续递增，正文写“式 (1)”。
+- 多行必须使用 `aligned`、`gathered`、`split` 等标准环境。
+- 不要在 display 中裸写以 `+`、`-`、`*` 开头的 Markdown 行。
+- 不要用反引号包装数学变量或公式。
+- 代码名可以使用反引号，例如函数 `cross_entropy` 对应损失 $\mathcal{L}_{\mathrm{CE}}$。
 
-## 图片定位建议
-当有源码包时，图片定位优先依据：
+## 图片定位
 
-1. `\includegraphics{文件名}`
-2. figure 的 caption
-3. figure 所在的 section / subsection
-4. 正文首次引用该 figure 的位置
+使用 `images_manifest.json` 中的以下字段定位：
 
-推荐在 `images_manifest.json` 中记录：
-- 原始文件名
-- 转换后文件名
-- caption
-- label
-- section_hint
-- first_reference_hint
+- `graphics_target`
+- `caption`
+- `label`
+- `section_hint`
+- `first_reference_hint`
+- `source_tex`
+
+优先用源码中的作者原图并与 PDF 核对；源码不可用时依次退回 PDF 嵌入图片、figure 裁剪和整页 fallback。禁止用网页截图交付。

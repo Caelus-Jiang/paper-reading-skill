@@ -1,184 +1,152 @@
 #!/usr/bin/env python3
+"""Create a canonical, non-destructive chapter scaffold and initial report."""
+
+from __future__ import annotations
+
 import argparse
+import json
 from pathlib import Path
 
-from common import get_workspace, read_json, write_markdown_report
+from common import atomic_write_text, get_workspace, read_json, write_json
+from merge_chapters import merge_workspace
+from report_schema import DEFAULT_SCHEMA_PATH, load_report_schema
 
 
-SKELETON = r"""# 论文阅读报告
-
-## 1. 论文核心观点与主张的系统梳理
-### 1.1 研究背景与动机
-
-### 1.2 问题设定
-
-<!-- 若有任务设定图或整体流程图，优先插入到本小节附近：
-![任务设定图](images/figure_01.png)
-并在图后解释该图与问题设定的关系。 -->
-
-### 1.3 核心观点（Claims）的逐条梳理
-
-### 1.4 创新性与贡献边界
-
-## 2. 关键论据、理论基础与数学方法的深度解析
-### 2.1 理论基础与学术渊源
-
-### 2.2 问题形式化与建模选择
-
-### 2.3 核心推导与算法构造
-
-<!-- 若有方法总览图、模块图、算法框图，优先插入到本小节附近：
-![方法总览图](images/figure_02.png)
-图后必须解释：模块关系、输入输出、为何支撑核心主张。 -->
-
-<!-- 关键公式解释应就地插入：
-在 2.2 / 2.3 / 2.4 或 3.x 的相关位置，公式首次成为核心论点时，紧跟解释。
-
-公式写法建议：
-1. 能单行写完的 display 公式，优先单行：
-   $$ E = mc^2 $$
-2. 若必须多行，使用 aligned：
-   $$
-   \\begin{{aligned}}
-   ...
-   \\end{{aligned}}
-   $$
-3. 不要在公式块中使用 \tag{{}}
-4. 不要在 display 公式中裸写行首 +
-5. 若渲染环境不确定，补一行纯文本伪公式
--->
-
-### 2.4 理论结论的适用范围
-
-## 3. 实验设计与实验结果的充分性分析
-### 3.1 实验目标与论文主张的对应关系
-
-### 3.2 实验设置合理性
-
-### 3.3 实验结果的解释力度
-
-| 设置 / 数据集 | 方法 | 指标 | 数值 | 备注 |
-|---|---|---|---|---|
-| 待补充 | 待补充 | 待补充 | 待补充 | 待补充 |
-
-<!-- 若正文在这里讨论主 benchmark、扩展指标、scaling law 或 additional experiments，
-则对应表格必须直接插入到本小节相关段落附近，而不是只放附录。 -->
-
-<!-- 若有主结果可视化、定性对比图，插入到本小节附近，而不是集中堆放。 -->
-
-### 3.4 潜在未讨论因素
-
-| 消融项 | 变化设置 | 数据集 / 设置 | 指标 | 原始数值 | 变化后数值 | 结论 |
-|---|---|---|---|---|---|---|
-| 待补充 | 待补充 | 待补充 | 待补充 | 待补充 | 待补充 | 待补充 |
-
-<!-- 若这里讨论消融、失败案例、边界条件或附加泛化实验，则对应表格必须直接出现在本小节附近。 -->
-
-<!-- 若有失败案例图、消融相关图，可插入到本小节后。 -->
-
-## 4. 与当前领域主流共识及反对观点的关系
-### 4.1 与主流观点的一致性
-
-### 4.2 与反对或竞争观点的分歧
-
-### 4.3 论文在学术版图中的定位
-
-### 4.4 文献检索说明
-- 检索范围：
-- 检索结论可信度：
-
-### 4.5 相关论文补充表
-
-| 序号 | 论文标题 | 作者 / 年份 | 来源 | 与原论文关系 | 一句话概述 |
-|---|---|---|---|---|---|
-| 1 |  |  |  |  |  |
-
-## 5. 对论文理论体系的严肃反驳与系统性质疑
-### 5.1 核心假设层面的质疑
-
-### 5.2 数学推导与理论主张的边界
-
-### 5.3 工程实现与实际适用性
-
-### 5.4 整体理论体系的稳健性
-
-## 6. 最终结论
-### 6.1 论文价值总结
-
-### 6.2 一句话总评
-
-### 6.3 综合评分（10 分制）
-- 创新性：
-- 技术严谨性：
-- 实验说服力：
-- 工程价值：
-- 总体评分：
-
-### 6.4 最关键的三条优点
-1.
-2.
-3.
-
-### 6.5 最关键的三条问题
-1.
-2.
-3.
-
-## 附录 A：关键实验表与消融实验表
-<!-- 附录 A 只做补充，不应替代正文中对应位置的关键表格。 -->
-### A.1 主 benchmark 对比表
-| 方法 | 设置 / 传感器 | 指标1 | 指标2 | 指标3 | 核心结论 |
-|---|---|---|---|---|---|
-| 待补充 | 待补充 | 待补充 | 待补充 | 待补充 | 待补充 |
-
-### A.2 扩展指标 / 扩展 benchmark 表
-| 方法 | 扩展指标1 | 扩展指标2 | 扩展指标3 | 结论 |
-|---|---|---|---|---|
-| 待补充 | 待补充 | 待补充 | 待补充 | 待补充 |
-
-### A.3 数据规模 / scaling law / 泛化表
-| 设置 | 数据规模 / 迁移设置 | 指标1 | 指标2 | 关键观察 |
-|---|---|---|---|---|
-| 待补充 | 待补充 | 待补充 | 待补充 | 待补充 |
-
-### A.4 关键消融实验表
-| 消融项 | 变化设置 | 指标 | 原始数值 | 变化后数值 | 结论 |
-|---|---|---|---|---|---|
-| 待补充 | 待补充 | 待补充 | 待补充 | 待补充 | 待补充 |
-
-### A.5 其他支撑正文结论的关键表
-| 表格主题 | 关键列 | 结论 |
-|---|---|---|
-| 待补充 | 待补充 | 待补充 |
-
-## 附录 B：本报告引用的关键外部文献
-1.
-2.
-3.
-"""
+PLACEHOLDER = "<!-- PAPER_READING_PLACEHOLDER: replace with evidence-backed content -->"
 
 
-def main():
+def yaml_string(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def frontmatter_fragment(metadata: dict) -> str:
+    arxiv_id = str(metadata.get("paper_id_with_version") or metadata.get("arxiv_id") or "")
+    year_text = "20" + arxiv_id[:2] if len(arxiv_id) >= 2 and arxiv_id[:2].isdigit() else "null"
+    authors = metadata.get("authors") or []
+    institutions = metadata.get("institutions") or []
+    aliases = metadata.get("aliases") or []
+    return "\n".join(
+        [
+            "---",
+            f"title: {yaml_string(metadata.get('title') or '')}",
+            f"authors: {yaml_string(authors)}",
+            f"institutions: {yaml_string(institutions)}",
+            f"venue: {yaml_string(metadata.get('venue') or 'arXiv preprint')}",
+            f"year: {year_text}",
+            f"arxiv_id: {yaml_string(arxiv_id)}",
+            f"arxiv_url: {yaml_string(metadata.get('arxiv_abs_url') or '')}",
+            f"hjfy_url: {yaml_string(metadata.get('hjfy_url') or '')}",
+            f"papers_cool_url: {yaml_string(metadata.get('papers_cool_url') or '')}",
+            'research_area: ""',
+            "tags:",
+            "  - paper-reading",
+            f"aliases: {yaml_string(aliases)}",
+            "cssclasses:",
+            "  - paper-reading-report",
+            "---",
+            "",
+            "> [!abstract] 一句话概括",
+            f"> {PLACEHOLDER}",
+        ]
+    )
+
+
+def table_for_heading(heading: str) -> str | None:
+    if heading.startswith("### 1.3 "):
+        return "| 主张 ID | 主张内容 | 原文位置 | 证据类型 | 证据强度 | reviewer 结论 |\n|---|---|---|---|---|---|\n| C1 | PAPER_READING_PLACEHOLDER |  |  |  |  |"
+    if heading.startswith("### 3.1 "):
+        return "| 实验组 | 对应主张 | 是否充分验证 | 缺失项 |\n|---|---|---|---|\n| PAPER_READING_PLACEHOLDER |  |  |  |"
+    if heading.startswith("### 3.3 "):
+        return "| 设置 / 数据集 | 方法 | 指标 | 数值 | 审稿人提示 |\n|---|---|---|---|---|\n| PAPER_READING_PLACEHOLDER |  |  |  |  |"
+    if heading.startswith("### 4.5 "):
+        return "| 论文标题 | 作者 / 年份 | 来源 | 与原论文关系 | 核查链接 |\n|---|---|---|---|---|\n| PAPER_READING_PLACEHOLDER |  |  |  |  |"
+    return None
+
+
+def chapter_fragment(chapter: dict) -> str:
+    blocks = [chapter["heading"]]
+    for heading in chapter.get("subheadings") or []:
+        blocks.extend(["", heading, "", PLACEHOLDER])
+        table = table_for_heading(heading)
+        if table:
+            blocks.extend(["", table])
+    return "\n".join(blocks).rstrip() + "\n"
+
+
+def appendix_fragment(chapter: dict) -> str:
+    return "\n".join(
+        [
+            chapter["heading"],
+            "",
+            PLACEHOLDER,
+            "",
+            chapter["subheadings"][0],
+            "",
+            PLACEHOLDER,
+        ]
+    ) + "\n"
+
+
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
-    parser.add_argument("--root", default=".")
+    parser.add_argument("--root", default="output")
+    parser.add_argument("--schema", default=str(DEFAULT_SCHEMA_PATH))
+    parser.add_argument("--overwrite-report", action="store_true")
     args = parser.parse_args()
 
-    root = Path(args.root).resolve()
-    workspace, ids = get_workspace(root, args.input)
+    workspace, ids = get_workspace(Path(args.root).resolve(), args.input)
     metadata = read_json(workspace / "metadata.json")
     report_path = workspace / f"{ids['arxiv_id']}_阅读报告.md"
+    if report_path.exists() and not args.overwrite_report:
+        print("Report already exists; skeleton left untouched:", report_path)
+        return 0
 
-    rendered_report = SKELETON.format(
-        input_url=metadata["input"],
-        paper_id_with_version=metadata["paper_id_with_version"],
-        arxiv_abs_url=metadata["arxiv_abs_url"],
-        hjfy_url=metadata["hjfy_url"],
-        papers_cool_url=metadata["papers_cool_url"],
+    schema_path = Path(args.schema).resolve()
+    schema = load_report_schema(schema_path)
+    chapters_dir = workspace / "cache" / "chapters"
+    chapters_dir.mkdir(parents=True, exist_ok=True)
+    claims_path = workspace / "cache" / "claims.json"
+    if not claims_path.exists() or args.overwrite_report:
+        write_json(
+            claims_path,
+            {
+                "schema_version": "1.0",
+                "claims": [],
+                "required_fields": [
+                    "claim_id",
+                    "claim",
+                    "claim_kind",
+                    "paper_location",
+                    "evidence",
+                    "evidence_strength",
+                    "reviewer_conclusion"
+                ],
+                "allowed_claim_kind": ["author_explicit", "author_implicit", "reviewer_inference"],
+                "allowed_evidence_strength": ["strong", "partial", "indirect", "insufficient"],
+                "code_paper_audit": {"official_code_url": "", "revision": "", "findings": []}
+            },
+        )
+    for chapter in schema["chapters"]:
+        if chapter["file"] == "00_frontmatter.md":
+            content = frontmatter_fragment(metadata)
+        elif chapter["file"] == "07_appendices.md":
+            content = appendix_fragment(chapter)
+        else:
+            content = chapter_fragment(chapter)
+        atomic_write_text(chapters_dir / chapter["file"], content)
+
+    merge_workspace(
+        workspace,
+        report_path,
+        schema_path,
+        delete_fragments=False,
+        overwrite_report=args.overwrite_report,
     )
-    write_markdown_report(report_path, rendered_report)
-    print("Report skeleton created:", report_path)
+    print("Report skeleton created without H1:", report_path)
+    print("Chapter fragments:", chapters_dir)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,0 +1,109 @@
+{
+  "schema_version": "2.0",
+  "frontmatter": {
+    "required_keys": [
+      "title",
+      "authors",
+      "institutions",
+      "venue",
+      "year",
+      "arxiv_id",
+      "arxiv_url",
+      "hjfy_url",
+      "papers_cool_url",
+      "research_area",
+      "tags",
+      "aliases",
+      "cssclasses"
+    ],
+    "forbidden_keys": ["one_liner"],
+    "required_tags": ["paper-reading"],
+    "required_cssclasses": ["paper-reading-report"]
+  },
+  "allow_h1": false,
+  "abstract_prefix": "> [!abstract] 一句话概括",
+  "required_url_prefixes": [
+    "https://arxiv.org/abs/",
+    "https://hjfy.top/arxiv/",
+    "https://papers.cool/arxiv/"
+  ],
+  "chapters": [
+    {
+      "file": "00_frontmatter.md",
+      "heading": null,
+      "subheadings": []
+    },
+    {
+      "file": "01_core_claims.md",
+      "heading": "## 1. 论文核心观点与主张的系统梳理",
+      "subheadings": [
+        "### 1.1 研究背景与动机",
+        "### 1.2 问题设定",
+        "### 1.3 核心观点（Claims）的逐条梳理",
+        "### 1.4 创新性与贡献边界"
+      ]
+    },
+    {
+      "file": "02_theory_and_method.md",
+      "heading": "## 2. 关键论据、理论基础与数学方法的深度解析",
+      "subheadings": [
+        "### 2.1 理论基础与学术渊源",
+        "### 2.2 问题形式化与建模选择",
+        "### 2.3 核心推导与算法构造",
+        "### 2.4 理论结论的适用范围"
+      ]
+    },
+    {
+      "file": "03_experiments.md",
+      "heading": "## 3. 实验设计与实验结果的充分性分析",
+      "subheadings": [
+        "### 3.1 实验目标与论文主张的对应关系",
+        "### 3.2 实验设置合理性",
+        "### 3.3 实验结果的解释力度",
+        "### 3.4 潜在未讨论因素"
+      ]
+    },
+    {
+      "file": "04_literature.md",
+      "heading": "## 4. 与当前领域主流共识及反对观点的关系",
+      "subheadings": [
+        "### 4.1 与主流观点的一致性",
+        "### 4.2 与反对或竞争观点的分歧",
+        "### 4.3 论文在学术版图中的定位",
+        "### 4.4 文献检索说明",
+        "### 4.5 相关论文补充表"
+      ]
+    },
+    {
+      "file": "05_critique.md",
+      "heading": "## 5. 对论文理论体系的严肃反驳与系统性质疑",
+      "subheadings": [
+        "### 5.1 核心假设层面的质疑",
+        "### 5.2 数学推导与理论主张的边界",
+        "### 5.3 工程实现与实际适用性",
+        "### 5.4 整体理论体系的稳健性"
+      ]
+    },
+    {
+      "file": "06_conclusion.md",
+      "heading": "## 6. 最终结论",
+      "subheadings": [
+        "### 6.1 论文价值总结",
+        "### 6.2 一句话总评",
+        "### 6.3 综合评分（10 分制）",
+        "### 6.4 最关键的三条优点",
+        "### 6.5 最关键的三条问题"
+      ]
+    },
+    {
+      "file": "07_appendices.md",
+      "heading": "## 附录 A：关键实验表与消融实验表",
+      "subheadings": ["## 附录 B：本报告引用的关键外部文献"]
+    }
+  ],
+  "required_tables": [
+    {"section": "### 1.3 核心观点（Claims）的逐条梳理", "kind": "claims"},
+    {"section": "### 3.3 实验结果的解释力度", "kind": "results"},
+    {"section": "### 4.5 相关论文补充表", "kind": "related_papers"}
+  ]
+}

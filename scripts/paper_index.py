@@ -24,15 +24,19 @@ Usage:
 
 import argparse
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import yaml
+
 INDEX_FILENAME = "paper_index.json"
 LOCAL_CONFIG_FILENAME = "paper-reading.local.json"
 REPORT_FILENAME_RE = re.compile(r'^(\d{4}\.\d{4,5})_阅读报告\.md$')
+FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 TITLE_LINE_RE = re.compile(r'^-\s*论文标题[：:]\s*(.+)', re.MULTILINE)
 
 
@@ -83,15 +87,22 @@ def _build_entry_from_metadata(dir_name: str, meta: Dict) -> Dict:
     }
 
 
-def _extract_title_from_report(report_path: Path) -> str:
-    """Read the first ~20 lines of a report Markdown file to extract the title."""
+def _extract_report_metadata(report_path: Path) -> Dict[str, str]:
+    """Read canonical YAML first, then fall back to the legacy title line."""
     try:
-        # Only read a small portion — title is always near the top
         head = report_path.read_text(encoding="utf-8")[:2000]
+        frontmatter_match = FRONTMATTER_RE.match(head)
+        if frontmatter_match:
+            data = yaml.safe_load(frontmatter_match.group(1)) or {}
+            if isinstance(data, dict):
+                return {
+                    "title": str(data.get("title") or "").strip(),
+                    "arxiv_id": str(data.get("arxiv_id") or "").strip(),
+                }
         match = TITLE_LINE_RE.search(head)
-        return match.group(1).strip() if match else ""
-    except OSError:
-        return ""
+        return {"title": match.group(1).strip() if match else "", "arxiv_id": ""}
+    except (OSError, yaml.YAMLError):
+        return {"title": "", "arxiv_id": ""}
 
 
 def scan_flat_notes(notes_root: Path) -> List[Dict]:
@@ -108,7 +119,14 @@ def scan_flat_notes(notes_root: Path) -> List[Dict]:
             continue
         match = REPORT_FILENAME_RE.match(md_file.name)
         arxiv_id = match.group(1) if match else ""
-        title = _extract_title_from_report(md_file)
+        report_metadata = _extract_report_metadata(md_file)
+        title = report_metadata["title"]
+        frontmatter_id = re.match(r"(\d{4}\.\d{4,5})(v\d+)?", report_metadata["arxiv_id"])
+        if frontmatter_id:
+            arxiv_id = frontmatter_id.group(1)
+            version = frontmatter_id.group(2) or ""
+        else:
+            version = ""
         relative_path = md_file.relative_to(notes_root).as_posix()
         # category is the parent subdirectory name, empty if at root
         category = md_file.parent.relative_to(notes_root).as_posix()
@@ -119,7 +137,7 @@ def scan_flat_notes(notes_root: Path) -> List[Dict]:
             "arxiv_id": arxiv_id,
             "title": title,
             "workspace_name": "",
-            "version": "",
+            "version": version,
             "created_at": "",
             "input": "",
             "file_name": md_file.name,
@@ -173,10 +191,12 @@ def save_index(output_root: Path, index_data: Dict) -> None:
     """Write the index file."""
     index_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     index_path = output_root / INDEX_FILENAME
-    index_path.write_text(
-        json.dumps(index_data, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    temporary = index_path.with_name(f".{index_path.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(json.dumps(index_data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, index_path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def rebuild_index(output_root: Path, flat: bool = False) -> Dict:
@@ -194,10 +214,14 @@ def rebuild_index(output_root: Path, flat: bool = False) -> Dict:
 
 
 def ensure_index(output_root: Path) -> Dict:
-    """Load the index if it exists, otherwise rebuild it."""
+    """Load the index only while no metadata/report input is newer than it."""
+    index_path = output_root / INDEX_FILENAME
     index_data = load_index(output_root)
-    if index_data["papers"]:
-        return index_data
+    if index_data["papers"] and index_path.exists():
+        index_mtime = index_path.stat().st_mtime_ns
+        candidates = list(output_root.rglob("metadata.json")) + list(output_root.rglob("*_阅读报告.md"))
+        if all(path.stat().st_mtime_ns <= index_mtime for path in candidates if path.is_file()):
+            return index_data
     return rebuild_index(output_root)
 
 
