@@ -22,6 +22,7 @@
 
 正文固定覆盖：
 
+0. 第一性原理论文速览：Task、Challenge、Insight、Novelty、Potential flaw、Motivation
 1. 论文核心观点与主张的系统梳理
 2. 关键论据、理论基础与数学方法的深度解析
 3. 实验设计与实验结果的充分性分析

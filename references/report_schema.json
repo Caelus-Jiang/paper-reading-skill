@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.0",
+  "schema_version": "2.1",
   "frontmatter": {
     "required_keys": [
       "title",
@@ -32,6 +32,18 @@
       "file": "00_frontmatter.md",
       "heading": null,
       "subheadings": []
+    },
+    {
+      "file": "00_quicklook.md",
+      "heading": "## 0. 第一性原理论文速览",
+      "subheadings": [
+        "### 0.1 Task：问题形式化",
+        "### 0.2 Challenge：传统方法为什么困难",
+        "### 0.3 Insight：从 Inspiration 到关键洞见",
+        "### 0.4 Novelty：将 Insight 落成什么创新",
+        "### 0.5 Potential flaw：边界、坏数据与研究机会",
+        "### 0.6 Motivation：如何从第一性原理想到本文"
+      ]
     },
     {
       "file": "01_core_claims.md",
@@ -106,6 +118,13 @@
     {"section": "### 3.3 实验结果的解释力度", "kind": "results"},
     {"section": "### 4.5 相关论文补充表", "kind": "related_papers"}
   ],
+  "quicklook": {
+    "section": "## 0. 第一性原理论文速览",
+    "novelty_section": "### 0.4 Novelty：将 Insight 落成什么创新",
+    "motivation_section": "### 0.6 Motivation：如何从第一性原理想到本文",
+    "forbid_latex": true,
+    "novelty_chain_template": "【创新点解决的问题是什么】 -> 【受哪个 Insight 启发】 -> 【设计了什么创新点，尽可能具体描述】"
+  },
   "related_papers_table": {
     "columns": ["论文标题", "arXiv ID", "作者 / 年份", "来源 / 类型", "与原论文关系", "一句话概述"],
     "forbid_network_links": true,

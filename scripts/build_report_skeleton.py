@@ -73,6 +73,26 @@ def chapter_fragment(chapter: dict) -> str:
     return "\n".join(blocks).rstrip() + "\n"
 
 
+def quicklook_fragment(chapter: dict) -> str:
+    prompts = {
+        "### 0.1 ": ["- **输入 / 输出 / 目标 / 约束 / 假设**：PAPER_READING_PLACEHOLDER"],
+        "### 0.2 ": ["- **基本困难与证据**：PAPER_READING_PLACEHOLDER"],
+        "### 0.3 ": ["- **Inspiration -> Insight -> 洞见类型**：PAPER_READING_PLACEHOLDER"],
+        "### 0.4 ": ["- 【PAPER_READING_PLACEHOLDER】 -> 【PAPER_READING_PLACEHOLDER】 -> 【PAPER_READING_PLACEHOLDER】"],
+        "### 0.5 ": [
+            "1. **情境延伸**：PAPER_READING_PLACEHOLDER",
+            "2. **坏数据性质**：PAPER_READING_PLACEHOLDER",
+            "3. **最值得写成论文的困难**：PAPER_READING_PLACEHOLDER",
+        ],
+        "### 0.6 ": ["- PAPER_READING_PLACEHOLDER？"],
+    }
+    blocks = [chapter["heading"]]
+    for heading in chapter.get("subheadings") or []:
+        lines = next((value for prefix, value in prompts.items() if heading.startswith(prefix)), [PLACEHOLDER])
+        blocks.extend(["", heading, "", *lines])
+    return "\n".join(blocks).rstrip() + "\n"
+
+
 def appendix_fragment(chapter: dict) -> str:
     return "\n".join(
         [
@@ -130,6 +150,8 @@ def main() -> int:
     for chapter in schema["chapters"]:
         if chapter["file"] == "00_frontmatter.md":
             content = frontmatter_fragment(metadata)
+        elif chapter["file"] == "00_quicklook.md":
+            content = quicklook_fragment(chapter)
         elif chapter["file"] == "07_appendices.md":
             content = appendix_fragment(chapter)
         else:

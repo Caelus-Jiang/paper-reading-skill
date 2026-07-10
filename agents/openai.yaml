@@ -1,4 +1,4 @@
 interface:
   display_name: "Paper Reading"
-  short_description: "Reviewer-grade paper analysis with evidence and reproducibility"
-  default_prompt: "Use $paper-reading to audit this paper's claims, equations, experiments, implementation consistency, and reproducibility in a self-contained report."
+  short_description: "First-principles overview and reviewer-grade paper audit"
+  default_prompt: "Use $paper-reading to produce a first-principles overview and evidence-backed reviewer audit of this paper."

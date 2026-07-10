@@ -155,6 +155,32 @@ def check_required_tables(text: str, schema: dict) -> list[str]:
     return errors
 
 
+def check_quicklook(text: str, schema: dict) -> list[str]:
+    rules = schema.get("quicklook") or {}
+    if not rules:
+        return []
+    errors: list[str] = []
+    quicklook = section_text(text, rules["section"])
+    if rules.get("forbid_latex"):
+        latex_pattern = re.compile(r"\$|\\(?:\(|\)|\[|\]|[A-Za-z]+)")
+        if latex_pattern.search(quicklook):
+            errors.append("first-principles quicklook must use plain text and contain no LaTeX")
+
+    novelty = section_text(text, rules["novelty_section"])
+    novelty_chain = re.search(r"【[^】\n]+】\s*->\s*【[^】\n]+】\s*->\s*【[^】\n]+】", novelty)
+    no_novelty = "未识别到可独立成立的 Novelty" in novelty
+    if not novelty_chain and not no_novelty:
+        errors.append(
+            "each quicklook Novelty must use 【problem】 -> 【Insight】 -> 【design】, "
+            "or explicitly state that no independent Novelty was identified"
+        )
+
+    motivation = section_text(text, rules["motivation_section"])
+    if "？" not in motivation and "?" not in motivation:
+        errors.append("quicklook Motivation must reconstruct the idea path as a question")
+    return errors
+
+
 def normalize_target(raw: str) -> str:
     target = raw.strip()
     if target.startswith("<") and target.endswith(">"):
@@ -315,6 +341,7 @@ def run_checks(report_path: Path, workspace: Path, schema: dict, require_manifes
     _frontmatter, frontmatter_errors = check_frontmatter(text, schema)
     errors.extend(frontmatter_errors)
     errors.extend(check_heading_schema(text, schema))
+    errors.extend(check_quicklook(text, schema))
     errors.extend(check_required_tables(text, schema))
     image_errors, image_warnings, image_count = check_images(report_path, workspace, text)
     errors.extend(image_errors)

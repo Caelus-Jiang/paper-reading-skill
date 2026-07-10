@@ -10,12 +10,23 @@ from common import atomic_write_text, get_workspace
 from report_schema import load_report_schema
 
 
+MIGRATABLE_MISSING_CHAPTERS = {"00_quicklook.md"}
+MIGRATION_PLACEHOLDER = "<!-- PAPER_READING_PLACEHOLDER: complete this new required chapter -->"
+
+
+def missing_chapter_fragment(chapter: dict) -> str:
+    blocks = [chapter["heading"]]
+    for heading in chapter.get("subheadings") or []:
+        blocks.extend(["", heading, "", MIGRATION_PLACEHOLDER])
+    return "\n".join(blocks).rstrip() + "\n"
+
+
 def split_report(workspace: Path, report_path: Path, overwrite: bool = False) -> Path:
     schema = load_report_schema()
     text = report_path.read_text(encoding="utf-8-sig")
     chapters_dir = workspace / "cache" / "chapters"
     chapters_dir.mkdir(parents=True, exist_ok=True)
-    starts = []
+    starts: list[int | None] = []
     for chapter in schema["chapters"]:
         heading = chapter.get("heading")
         if heading is None:
@@ -26,15 +37,23 @@ def split_report(workspace: Path, report_path: Path, overwrite: bool = False) ->
         if position < 0:
             if text.startswith(heading + "\n"):
                 position = 0
+            elif chapter["file"] in MIGRATABLE_MISSING_CHAPTERS:
+                starts.append(None)
+                continue
             else:
                 raise ValueError(f"Cannot split report; missing chapter heading: {heading}")
         starts.append(position + (1 if position > 0 else 0))
-    starts.append(len(text))
     for index, chapter in enumerate(schema["chapters"]):
         target = chapters_dir / chapter["file"]
         if target.exists() and not overwrite:
             raise FileExistsError(f"Chapter fragment exists; pass --overwrite-fragments: {target}")
-        fragment = text[starts[index]:starts[index + 1]].strip() + "\n"
+        start = starts[index]
+        if start is None:
+            fragment = missing_chapter_fragment(chapter)
+            print(f"Created migration placeholder for missing chapter: {chapter['heading']}")
+        else:
+            following = next((value for value in starts[index + 1:] if value is not None), len(text))
+            fragment = text[start:following].strip() + "\n"
         atomic_write_text(target, fragment)
     return chapters_dir
 

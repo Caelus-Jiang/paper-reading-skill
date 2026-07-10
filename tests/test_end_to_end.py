@@ -107,7 +107,30 @@ Figure~\ref{fig:fixture} shows the method.
             self.assertIn("Fixture paper page text", (workspace / "cache" / "paper_text.txt").read_text(encoding="utf-8"))
             report = workspace / "2401.12345_阅读报告.md"
             self.assertFalse(report.read_text(encoding="utf-8").startswith("# "))
+            self.assertIn("## 0. 第一性原理论文速览", report.read_text(encoding="utf-8"))
+            self.assertTrue((workspace / "cache" / "chapters" / "00_quicklook.md").exists())
             self.assertTrue((workspace / "cache" / "chapter_manifest.json").exists())
+
+    def test_legacy_report_split_adds_quicklook_migration_fragment(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary) / "legacy_workspace"
+            workspace.mkdir()
+            schema = load_report_schema()
+            legacy_parts = ["---\ntitle: Legacy\n---\n\n> [!abstract] 一句话概括\n> Legacy report."]
+            legacy_parts.extend(
+                f"{chapter['heading']}\n\nLegacy chapter text."
+                for chapter in schema["chapters"]
+                if chapter.get("heading") and chapter["file"] != "00_quicklook.md"
+            )
+            report = workspace / "legacy_阅读报告.md"
+            atomic_write_text(report, "\n\n".join(legacy_parts) + "\n")
+
+            split_report(workspace, report)
+
+            quicklook = workspace / "cache" / "chapters" / "00_quicklook.md"
+            self.assertTrue(quicklook.exists())
+            self.assertIn("## 0. 第一性原理论文速览", quicklook.read_text(encoding="utf-8"))
+            self.assertIn("PAPER_READING_PLACEHOLDER", quicklook.read_text(encoding="utf-8"))
 
     def test_fully_populated_fixture_passes_strict_acceptance(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -165,6 +188,10 @@ cssclasses: ["paper-reading-report"]
                 blocks = [chapter["heading"], "", "Evidence-backed chapter text."]
                 for heading in chapter.get("subheadings") or []:
                     blocks.extend(["", heading, "", "Evidence-backed section text."])
+                    if heading.startswith("### 0.4"):
+                        blocks.extend(["", "【Missing memory】 -> 【Persistent state is sufficient】 -> 【Add a recurrent state module】"])
+                    if heading.startswith("### 0.6"):
+                        blocks.extend(["", "Can the method preserve task history explicitly?"])
                     if heading.startswith("### 1.3"):
                         blocks.extend(["", "| 主张 ID | 主张 | 证据 | 证据强度 | Reviewer 结论 |", "|---|---|---|---|---|", "| C1 | Fixture | Table 1 | 部分 | Partially supported |"])
                     if heading.startswith("### 3.3"):

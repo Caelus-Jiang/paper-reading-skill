@@ -30,6 +30,21 @@ class ReportValidationTests(unittest.TestCase):
         errors, _warnings = check_report_quality.check_math("Use `q_0.detach()` and `no_grad`.")
         self.assertEqual(errors, [])
 
+    def test_quicklook_requires_plain_text_novelty_chain_and_question(self):
+        schema = load_report_schema()
+        text = """## 0. 第一性原理论文速览
+### 0.4 Novelty：将 Insight 落成什么创新
+【长程依赖】 -> 【保留状态足够】 -> 【增加循环状态模块】
+### 0.6 Motivation：如何从第一性原理想到本文
+之前的方法会丢失状态，那可不可以显式保留历史？
+## 1. 论文核心观点与主张的系统梳理
+"""
+        self.assertEqual(check_report_quality.check_quicklook(text, schema), [])
+        errors = check_report_quality.check_quicklook(text.replace("显式保留历史？", "$h_t$？"), schema)
+        self.assertTrue(any("no LaTeX" in error for error in errors))
+        errors = check_report_quality.check_quicklook(text.replace("显式保留历史？", r"保留 \mathbf{h}？"), schema)
+        self.assertTrue(any("no LaTeX" in error for error in errors))
+
     def test_obsidian_sync_refuses_to_inject_frontmatter(self):
         with self.assertRaises(ValueError):
             sync_obsidian.validate_frontmatter("## 1. report\n")
