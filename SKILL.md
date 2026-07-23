@@ -169,13 +169,29 @@ python3 scripts/merge_chapters.py \
 
 完整写作规范读取 [report-writing-guidelines.md](references/report-writing-guidelines.md)。
 
-## 7. 最终验收与可选同步
+## 7. 最终验收与默认同步
 
-完成报告和 `cache/claims.json` 后运行：
+除非用户明确要求“不同步”“不要同步”或“仅保留本地报告”，完成报告和 `cache/claims.json` 后必须同步到 Obsidian。同步前先执行 dry-run；只有 dry-run 与严格验收均通过后才实际写入。
+
+默认路径：
+
+- 笔记根目录：`/Users/jiangpeng/Peng's second brain/论文/论文笔记`
+- 附件目录：`/Users/jiangpeng/Peng's second brain/attachments`
+- 在笔记根目录现有子目录中选择与论文研究领域最匹配、最具体的目录；无法可靠归类时使用 `通用`。不要仅为单篇论文新建主题目录。
+
+先预演：
 
 ```bash
-python3 scripts/finalize_report.py --paper-input "<论文输入>" --root output
+python3 scripts/finalize_report.py \
+  --paper-input "<论文输入>" \
+  --root output \
+  --sync-obsidian \
+  --obsidian-dry-run \
+  --notes-dir "<按研究领域选择的笔记目录>" \
+  --images-dir "/Users/jiangpeng/Peng's second brain/attachments"
 ```
+
+预演通过后执行同一命令并移除 `--obsidian-dry-run`。若同一基础 arXiv ID 的规范报告已存在且内容不同，确认其 frontmatter ID 一致后加 `--obsidian-overwrite`；同步器会先备份旧笔记。ID 不一致、目标歧义或无法确认来源时不得覆盖。
 
 验收必须通过：
 
@@ -188,18 +204,13 @@ python3 scripts/finalize_report.py --paper-input "<论文输入>" --root output
 - chapter manifest 与报告哈希检查
 - claims ledger 字段与证据类型检查
 
-Obsidian 同步默认关闭。只有用户明确要求同步时才执行：
+只有用户明确要求不同步时，才运行不带 `--sync-obsidian` 的验收命令：
 
 ```bash
-python3 scripts/finalize_report.py \
-  --paper-input "<论文输入>" \
-  --root output \
-  --sync-obsidian \
-  --notes-dir "<笔记目录>" \
-  --images-dir "<附件目录>"
+python3 scripts/finalize_report.py --paper-input "<论文输入>" --root output
 ```
 
-先预演可加 `--obsidian-dry-run`。覆盖已有不同笔记必须显式加 `--obsidian-overwrite`；同步器会备份旧笔记，只复制正文实际引用的图片，并拒绝替报告补造 frontmatter。
+同步器只复制正文实际引用的图片，并拒绝替报告补造 frontmatter。
 
 同步器使用 Obsidian 笔记目录下的隐藏增量索引 `.paper-reading-index.json` 查找相关论文阅读报告。规范报告名固定为 `{arxiv_id}_阅读报告.md`，因此优先按基础 arXiv ID 做常数时间查找；只有缺少 ID 时才回退到规范化标题。唯一命中时把 4.5 的论文标题改写为 `[[{arxiv_id}_阅读报告|论文标题]]`，未命中或命中歧义时不添加链接。首次同步会全量建索引，之后每次同步只增量更新当前报告；vault 在同步器之外发生批量改动后，显式加 `--rebuild-related-index` 重建。
 
