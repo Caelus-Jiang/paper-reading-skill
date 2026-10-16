@@ -175,8 +175,8 @@ python3 scripts/merge_chapters.py \
 
 默认路径：
 
-- 笔记根目录：`/Users/jiangpeng/Peng's second brain/论文/论文笔记`
-- 附件目录：`/Users/jiangpeng/Peng's second brain/attachments`
+- 笔记根目录：`/Users/pengjiang/Library/Mobile Documents/iCloud~md~obsidian/Documents/Peng's second brain/论文/论文笔记`
+- 附件目录：`/Users/pengjiang/Library/Mobile Documents/iCloud~md~obsidian/Documents/Peng's second brain/attachments`
 - 在笔记根目录现有子目录中选择与论文研究领域最匹配、最具体的目录；无法可靠归类时使用 `通用`。不要仅为单篇论文新建主题目录。
 
 先预演：
@@ -188,7 +188,7 @@ python3 scripts/finalize_report.py \
   --sync-obsidian \
   --obsidian-dry-run \
   --notes-dir "<按研究领域选择的笔记目录>" \
-  --images-dir "/Users/jiangpeng/Peng's second brain/attachments"
+  --images-dir "/Users/pengjiang/Library/Mobile Documents/iCloud~md~obsidian/Documents/Peng's second brain/attachments"
 ```
 
 预演通过后执行同一命令并移除 `--obsidian-dry-run`。若同一基础 arXiv ID 的规范报告已存在且内容不同，确认其 frontmatter ID 一致后加 `--obsidian-overwrite`；同步器会先备份旧笔记。ID 不一致、目标歧义或无法确认来源时不得覆盖。
