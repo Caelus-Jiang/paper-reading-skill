@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from common import get_workspace
+from common import get_workspace, reject_ambiguous_reports
 
 
 SUSPICIOUS_TOKENS = [
@@ -30,6 +30,7 @@ def resolve_report_path(root: Path, paper_input: str | None, report_path: str | 
     if not paper_input:
         raise ValueError("Pass either --paper-input or --report-path.")
 
+    reject_ambiguous_reports(root, paper_input)
     workspace, ids = get_workspace(root, paper_input)
     primary_report = workspace / f"{ids['arxiv_id']}_阅读报告.md"
     if primary_report.exists():

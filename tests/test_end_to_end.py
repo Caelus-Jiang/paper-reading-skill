@@ -193,7 +193,7 @@ cssclasses: ["paper-reading-report"]
                     if heading.startswith("### 0.6"):
                         blocks.extend(["", "Can the method preserve task history explicitly?"])
                     if heading.startswith("### 1.3"):
-                        blocks.extend(["", "| 主张 ID | 主张 | 证据 | 证据强度 | Reviewer 结论 |", "|---|---|---|---|---|", "| C1 | Fixture | Table 1 | 部分 | Partially supported |"])
+                        blocks.extend(["", "| 主张 ID | 主张 | 原文位置 | 证据 | 证据强度 | Reviewer 结论 |", "|---|---|---|---|---|---|", "| C1 | Fixture | Section 1 | Table 1 | 部分 | Partially supported |"])
                     if heading.startswith("### 3.3"):
                         blocks.extend(["", "| 数据集 | 方法 | 指标 | 数值 | 审稿人提示 |", "|---|---|---|---|---|", "| Fixture | Method | Score | 1.0 | Partial evidence |"])
                     if heading.startswith("### 4.5"):

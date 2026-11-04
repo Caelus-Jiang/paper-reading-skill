@@ -73,8 +73,9 @@ $$ \mathcal{L} = \mathcal{L}_{\mathrm{task}} + \lambda \mathcal{L}_{\mathrm{aux}
 $$
 \begin{aligned}
 \mathcal{L} ={}& \mathcal{L}_{\mathrm{task}} \\
-&+ \lambda \mathcal{L}_{\mathrm{aux}} \tag{2}
+&+ \lambda \mathcal{L}_{\mathrm{aux}}
 \end{aligned}
+\tag{2}
 $$
 ```
 
@@ -82,10 +83,13 @@ $$
 
 - 只有需要正文引用的关键公式才编号。
 - 编号从 1 连续递增，正文写“式 (1)”。
+- `\tag{N}` 放在 `\end{aligned}` 等内部对齐环境之后、`$$` 之前；不得嵌在 `aligned`、`alignedat`、`gathered`、`split` 内。
 - 多行必须使用 `aligned`、`gathered`、`split` 等标准环境。
 - 不要在 display 中裸写以 `+`、`-`、`*` 开头的 Markdown 行。
 - 不要用反引号包装数学变量或公式。
 - 代码名可以使用反引号，例如函数 `cross_entropy` 对应损失 $\mathcal{L}_{\mathrm{CE}}$。
+
+静态验收之外，还需按 [MathJax渲染验证](mathjax-validation.md) 检查实际引擎；编号连续不代表公式可渲染。
 
 ## 图片定位
 

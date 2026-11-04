@@ -8,13 +8,14 @@ import hashlib
 import json
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 import fitz
 import yaml
 from PIL import Image
 
-from common import find_disallowed_control_chars, get_workspace
+from common import find_disallowed_control_chars, get_workspace, reject_ambiguous_reports
 from report_schema import DEFAULT_SCHEMA_PATH, load_report_schema, ordered_headings
 
 
@@ -23,6 +24,7 @@ IMAGE_LINK_RE = re.compile(r"!\[([^\]]*)\]\(([^)\n]+)\)")
 OBSIDIAN_IMAGE_RE = re.compile(r"!\[\[([^\]|#]+)(?:\|[^\]]+)?\]\]")
 PLACEHOLDER_RE = re.compile(r"PAPER_READING_PLACEHOLDER|\bTODO\b|\bTBD\b|待补充|placeholder", re.I)
 MOJIBAKE_TOKENS = ("璁烘枃", "闃呰", "鍩烘湰", "闄勫綍", "鏈枃", "鏂囩尞", "锛")
+ABSENCE_MARKERS = ("不适用", "原文未提供", "未使用外部文献", "未检索到可靠文献")
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,7 +43,9 @@ def resolve_report(args: argparse.Namespace) -> tuple[Path, Path]:
     if args.report_path:
         report = Path(args.report_path).expanduser().resolve()
         return report, report.parent
-    workspace, ids = get_workspace(Path(args.root).expanduser().resolve(), args.paper_input)
+    root = Path(args.root).expanduser().resolve()
+    reject_ambiguous_reports(root, args.paper_input)
+    workspace, ids = get_workspace(root, args.paper_input)
     report = workspace / f"{ids['arxiv_id']}_阅读报告.md"
     if not report.exists():
         candidates = sorted(workspace.glob("*_阅读报告.md"))
@@ -135,11 +139,17 @@ def markdown_table_has_data(section: str) -> bool:
     return any(not PLACEHOLDER_RE.search(row) and any(cell.strip() for cell in row.strip("|").split("|")) for row in data_rows)
 
 
+def explains_absence(section: str) -> bool:
+    prose = re.sub(r"<!--.*?-->", "", section, flags=re.S)
+    prose = re.sub(r"(?m)^\|[^\n]*\|\s*$", "", prose).strip()
+    return any(marker in prose for marker in ABSENCE_MARKERS) and len(prose) >= 30
+
+
 def check_required_tables(text: str, schema: dict) -> list[str]:
     errors = []
     for requirement in schema.get("required_tables", []):
         content = section_text(text, requirement["section"])
-        if not markdown_table_has_data(content):
+        if not markdown_table_has_data(content) and not (requirement.get("allow_explicit_absence") and explains_absence(content)):
             errors.append(f"required {requirement['kind']} table has no populated data row: {requirement['section']}")
     claims = section_text(text, "### 1.3 核心观点（Claims）的逐条梳理")
     if "证据" not in claims:
@@ -152,6 +162,22 @@ def check_required_tables(text: str, schema: dict) -> list[str]:
             errors.append("related-papers table must include an arXiv ID column for cached Obsidian lookup")
     if re.search(r"https?://|\[[^]]+\]\(https?://", related):
         errors.append("related-papers table must not contain network links; keep verified URLs in Appendix B")
+    return errors
+
+
+def check_claim_locations(text: str) -> list[str]:
+    section = section_text(text, "### 1.3 核心观点（Claims）的逐条梳理")
+    rows = [[cell.strip() for cell in line.strip().strip("|").split("|")] for line in section.splitlines() if line.strip().startswith("|")]
+    if len(rows) < 3:
+        return []
+    try:
+        location_column = rows[0].index("原文位置")
+    except ValueError:
+        return ["claims table must include an 原文位置 column"]
+    errors = []
+    for row in rows[2:]:
+        if row and re.fullmatch(r"C\d+", row[0]) and (len(row) <= location_column or not row[location_column]):
+            errors.append(f"claim {row[0]} lacks an original-paper location")
     return errors
 
 
@@ -209,7 +235,7 @@ def check_images(report_path: Path, workspace: Path, text: str) -> tuple[list[st
     matches = [(match.start(), normalize_target(match.group(2))) for match in IMAGE_LINK_RE.finditer(text)]
     matches.extend((match.start(), normalize_target(match.group(1))) for match in OBSIDIAN_IMAGE_RE.finditer(text))
     if not matches:
-        return ["report contains no image embeds"], warnings, 0
+        return errors, warnings, 0
 
     manifest_paths = set()
     manifest_path = workspace / "cache" / "images_manifest.json"
@@ -241,19 +267,42 @@ def check_images(report_path: Path, workspace: Path, text: str) -> tuple[list[st
     return errors, warnings, len(matches)
 
 
+def find_invalid_math_tags(body):
+    """Return tags inside MathJax's unnumbered alignment environments."""
+    body = re.sub(r'(?m)(?<!\\)%[^\n]*', lambda match: ' ' * len(match.group()), body)
+    stack = []
+    invalid = []
+    tokens = re.finditer(r'\\begin\{([^}]+)\}|\\end\{([^}]+)\}|\\tag\*?\{[^{}]+\}', body)
+    for token in tokens:
+        if token.group(1):
+            stack.append(token.group(1))
+        elif token.group(2):
+            if stack and stack[-1] == token.group(2):
+                stack.pop()
+        else:
+            env = next((name for name in reversed(stack) if name in {'aligned', 'alignedat', 'gathered', 'split'}), None)
+            if env:
+                invalid.append((token.start(), token.end(), env))
+    return invalid
+
+
 def check_math(text: str) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
     visible = strip_code_fences(text)
+    if re.search(r"\\mathbbm\b", visible):
+        errors.append("unsupported math macro \\mathbbm; use a renderer-compatible indicator")
     if visible.count("$$") % 2:
         errors.append("unbalanced display-math delimiters ($$)")
     displays = re.findall(r"\$\$(.*?)\$\$", visible, flags=re.S)
     for index, body in enumerate(displays, start=1):
         nonempty_lines = [line.strip() for line in body.strip().splitlines() if line.strip()]
-        if len(nonempty_lines) > 1 and not re.search(r"\\begin\{(?:aligned|gathered|array|split)\}", body):
+        if len(nonempty_lines) > 1 and not re.search(r"\\begin\{(?:aligned|alignedat|gathered|array|split)\}", body):
             errors.append(f"display formula {index} is multiline without a supported LaTeX environment")
         if any(re.match(r"^[+*-]\s", line) for line in nonempty_lines):
             errors.append(f"display formula {index} contains a bare list-like operator line")
+        for _start, _end, env in find_invalid_math_tags(body):
+            errors.append(f"display formula {index}: MathJax tag not allowed in {env} environment; move it after the environment, inside $$")
     without_displays = re.sub(r"\$\$.*?\$\$", "", visible, flags=re.S)
     inline_dollars = len(re.findall(r"(?<!\\)\$(?!\$)", without_displays))
     if inline_dollars % 2:
@@ -317,9 +366,17 @@ def check_external_evidence(text: str, schema: dict) -> list[str]:
     errors = [prefix for prefix in schema.get("required_url_prefixes", []) if prefix not in text]
     result = ["missing required URL prefix: " + value for value in errors]
     appendix = section_text(text, "## 附录 B：本报告引用的关键外部文献")
-    if not re.search(r"https?://", appendix):
+    if not re.search(r"https?://", appendix) and not explains_absence(appendix):
         result.append("Appendix B must contain verified external literature links")
     return result
+
+
+def check_repeated_paragraphs(text: str) -> list[str]:
+    visible = re.sub(r"<!--.*?-->", "", strip_code_fences(text), flags=re.S)
+    paragraphs = [re.sub(r"\s+", " ", part).strip() for part in re.split(r"\n\s*\n", visible)]
+    counts = Counter(part for part in paragraphs if len(part) >= 100 and not part.startswith(("#", "|", "!", "$$")))
+    duplicates = [part for part, count in counts.items() if count > 1]
+    return [f"repeated long paragraphs: {len(duplicates)}"] if duplicates else []
 
 
 def run_checks(report_path: Path, workspace: Path, schema: dict, require_manifest: bool) -> tuple[list[str], list[str], dict]:
@@ -343,6 +400,7 @@ def run_checks(report_path: Path, workspace: Path, schema: dict, require_manifes
     errors.extend(check_heading_schema(text, schema))
     errors.extend(check_quicklook(text, schema))
     errors.extend(check_required_tables(text, schema))
+    errors.extend(check_claim_locations(text))
     image_errors, image_warnings, image_count = check_images(report_path, workspace, text)
     errors.extend(image_errors)
     warnings.extend(image_warnings)
@@ -350,6 +408,7 @@ def run_checks(report_path: Path, workspace: Path, schema: dict, require_manifes
     errors.extend(math_errors)
     warnings.extend(math_warnings)
     errors.extend(check_external_evidence(text, schema))
+    errors.extend(check_repeated_paragraphs(text))
     errors.extend(check_chapter_manifest(workspace, report_path, require_manifest))
     errors.extend(check_claims_ledger(workspace, require_manifest))
     return errors, warnings, {"images_checked": image_count, "bytes": len(text.encode("utf-8"))}

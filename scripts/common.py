@@ -135,6 +135,22 @@ def read_json(path: Path) -> Dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def reject_ambiguous_reports(root: Path, paper_input: str) -> None:
+    direct = Path(paper_input)
+    if direct.is_dir() or (root / paper_input).is_dir():
+        return
+    parsed = extract_arxiv_id(paper_input)
+    if not parsed:
+        return
+    arxiv_id = parsed[0]
+    reports = sorted(root.glob(f"{arxiv_id}_*/{arxiv_id}_阅读报告.md"))
+    if len(reports) > 1:
+        raise ValueError(
+            f"Multiple reports for {arxiv_id}; pass a workspace directory or --report-path: "
+            + ", ".join(str(path.parent.name) for path in reports)
+        )
+
+
 def _find_cached_workspace(root: Path, arxiv_id: str):
     """Search for an existing workspace directory matching the arxiv_id, and
     return its metadata.json if present."""
