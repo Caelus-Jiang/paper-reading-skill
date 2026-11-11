@@ -8,7 +8,7 @@ import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 
-from common import atomic_write_text, get_workspace, write_json
+from common import atomic_write_text, get_workspace, write_json, workspace_report_path
 from report_schema import DEFAULT_SCHEMA_PATH, load_report_schema
 
 
@@ -83,7 +83,7 @@ def main() -> int:
     args = parser.parse_args()
 
     workspace, ids = get_workspace(Path(args.root).resolve(), args.paper_input)
-    report_path = workspace / f"{ids['arxiv_id']}_阅读报告.md"
+    report_path = workspace_report_path(workspace, ids)
     merged = merge_workspace(
         workspace,
         report_path,

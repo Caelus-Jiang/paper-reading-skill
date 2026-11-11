@@ -15,7 +15,8 @@ import fitz
 import yaml
 from PIL import Image
 
-from common import find_disallowed_control_chars, get_workspace, reject_ambiguous_reports
+from common import find_disallowed_control_chars, get_workspace, reject_ambiguous_reports, workspace_report_path
+from paper_evidence import CLAIMS_HEADING, CLAIMS_SCHEMA_VERSION, CLAIM_FIELDS, check_paper_evidence, claim_table_rows
 from report_schema import DEFAULT_SCHEMA_PATH, load_report_schema, ordered_headings
 
 
@@ -46,7 +47,7 @@ def resolve_report(args: argparse.Namespace) -> tuple[Path, Path]:
     root = Path(args.root).expanduser().resolve()
     reject_ambiguous_reports(root, args.paper_input)
     workspace, ids = get_workspace(root, args.paper_input)
-    report = workspace / f"{ids['arxiv_id']}_阅读报告.md"
+    report = workspace_report_path(workspace, ids)
     if not report.exists():
         candidates = sorted(workspace.glob("*_阅读报告.md"))
         if len(candidates) == 1:
@@ -131,6 +132,24 @@ def section_text(text: str, heading: str) -> str:
     return text[match.end():end]
 
 
+def check_research_logic(text: str, schema: dict) -> list[str]:
+    """Check placement and visible prose; argument validity needs reviewer judgment."""
+    rule = schema.get("research_logic")
+    if not rule:
+        return []
+    visible = re.sub(r"<!--.*?-->", "", strip_code_fences(text), flags=re.S)
+    parent = section_text(visible, rule["parent_section"])
+    heading = rule["heading"]
+    occurrences = re.findall(rf"(?m)^{re.escape(heading)}\s*$", parent)
+    if len(occurrences) != 1:
+        return [f"research logic must appear once under {rule['parent_section']}: {heading}"]
+    body = section_text(parent, heading)
+    prose = "\n".join(line for line in body.splitlines() if not line.lstrip().startswith(("#", "|", "!")))
+    if not PLACEHOLDER_RE.sub("", prose).strip():
+        return ["research logic needs visible explanatory prose; a diagram, table or placeholder alone is insufficient"]
+    return []
+
+
 def markdown_table_has_data(section: str) -> bool:
     rows = [line.strip() for line in section.splitlines() if line.strip().startswith("|") and line.strip().endswith("|")]
     if len(rows) < 3:
@@ -166,8 +185,7 @@ def check_required_tables(text: str, schema: dict) -> list[str]:
 
 
 def check_claim_locations(text: str) -> list[str]:
-    section = section_text(text, "### 1.3 核心观点（Claims）的逐条梳理")
-    rows = [[cell.strip() for cell in line.strip().strip("|").split("|")] for line in section.splitlines() if line.strip().startswith("|")]
+    rows = claim_table_rows(section_text(text, CLAIMS_HEADING))
     if len(rows) < 3:
         return []
     try:
@@ -181,6 +199,46 @@ def check_claim_locations(text: str) -> list[str]:
     return errors
 
 
+def check_quicklook_callouts(content: str, rule: dict) -> tuple[dict[str, dict], list[str]]:
+    """Validate every card, not just the first matching item in a section."""
+    errors = []
+    cards = {}
+    pattern = re.compile(r"(?m)^> \[!([^\]\n]+)\]([^\n]*)(?:\n>[^\n]*)*")
+    matches = list(pattern.finditer(content))
+    if not matches:
+        return cards, [f"quicklook {rule['id_prefix']} items must use vertical {rule['type']} callouts"]
+    if pattern.sub("", content).strip():
+        errors.append(f"quicklook {rule['id_prefix']} content must stay inside separate callouts")
+    for match in matches:
+        title = match.group(2).strip()
+        title_match = re.fullmatch(rf"({rule['id_prefix']}[1-9]\d*)\s*[｜|]\s*(\S.*)", title)
+        if match.group(1) != rule['type'] or not title_match:
+            errors.append(f"quicklook callout must use [!{rule['type']}] {rule['id_prefix']}1｜short title")
+            continue
+        item_id = title_match.group(1)
+        if item_id in cards:
+            errors.append(f"duplicate quicklook ID: {item_id}")
+        fields = {}
+        found_fields = []
+        for index, line in enumerate(match.group().splitlines()[1:], start=1):
+            if re.match(r"> \[!", line):
+                errors.append(f"{item_id}: separate adjacent callouts with a blank line")
+            field = re.fullmatch(r">\s*\*\*([^*]+)\*\*\s*[：:]\s*(.*)", line)
+            if field:
+                label, value = field.groups()
+                if label in rule['fields']:
+                    if found_fields and match.group().splitlines()[index - 1].strip() != ">":
+                        errors.append(f"{item_id} fields must be separated by a quoted blank line (>) to render vertically")
+                    found_fields.append(label)
+                    fields[label] = value.strip()
+                    if not value.strip() or re.search(r"\*\*[^*]+\*\*\s*[：:]", value):
+                        errors.append(f"{item_id} field {label} must have nonempty content on its own line")
+        if found_fields != rule['fields']:
+            errors.append(f"{item_id} must contain each vertical field once, in order: " + ', '.join(rule['fields']))
+        cards[item_id] = fields
+    return cards, errors
+
+
 def check_quicklook(text: str, schema: dict) -> list[str]:
     rules = schema.get("quicklook") or {}
     if not rules:
@@ -192,14 +250,26 @@ def check_quicklook(text: str, schema: dict) -> list[str]:
         if latex_pattern.search(quicklook):
             errors.append("first-principles quicklook must use plain text and contain no LaTeX")
 
-    novelty = section_text(text, rules["novelty_section"])
-    novelty_chain = re.search(r"【[^】\n]+】\s*->\s*【[^】\n]+】\s*->\s*【[^】\n]+】", novelty)
-    no_novelty = "未识别到可独立成立的 Novelty" in novelty
-    if not novelty_chain and not no_novelty:
-        errors.append(
-            "each quicklook Novelty must use 【problem】 -> 【Insight】 -> 【design】, "
-            "or explicitly state that no independent Novelty was identified"
-        )
+    visible = re.sub(r"<!--.*?-->", "", strip_code_fences(quicklook), flags=re.S)
+    insight_rule = rules["callouts"]["insight"]
+    novelty_rule = rules["callouts"]["novelty"]
+    insights, card_errors = check_quicklook_callouts(section_text(visible, insight_rule["section"]), insight_rule)
+    errors.extend(card_errors)
+    novelty = section_text(visible, novelty_rule["section"]).strip()
+    absence = re.fullmatch(
+        r"> \[!example\] 未识别到可独立成立的 Novelty\n((?:>[^\n]*(?:\n|$))+)", novelty
+    )
+    if absence:
+        explanation = re.sub(r"(?m)^>\s?", "", absence.group(1)).strip()
+        if len(explanation) < 20 or re.search(r"(?m)^> \[!", absence.group(1)):
+            errors.append("no independent Novelty callout must explain the reason and evidence boundary")
+    else:
+        novelties, card_errors = check_quicklook_callouts(novelty, novelty_rule)
+        errors.extend(card_errors)
+        for item_id, fields in novelties.items():
+            references = re.findall(r"(?<![A-Za-z0-9])I[0-9]+(?![0-9])", fields.get("对应洞见", ""))
+            if not references or any(reference not in insights for reference in references):
+                errors.append(f"{item_id} must reference existing Insight IDs in 对应洞见")
 
     motivation = section_text(text, rules["motivation_section"])
     if "？" not in motivation and "?" not in motivation:
@@ -338,7 +408,7 @@ def check_chapter_manifest(workspace: Path, report_path: Path, required: bool) -
     return []
 
 
-def check_claims_ledger(workspace: Path, required: bool) -> list[str]:
+def check_claims_ledger(workspace: Path, required: bool, text: str) -> list[str]:
     path = workspace / "cache" / "claims.json"
     if not path.exists():
         return ["claims evidence ledger is required but missing"] if required else []
@@ -346,10 +416,17 @@ def check_claims_ledger(workspace: Path, required: bool) -> list[str]:
         ledger = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         return [f"invalid claims evidence ledger: {exc}"]
-    claims = ledger.get("claims") or []
+    if not isinstance(ledger, dict):
+        return ["claims evidence ledger must be a JSON object"]
+    version = ledger.get("schema_version", "1.0")
+    if version not in ("1.0", CLAIMS_SCHEMA_VERSION):
+        return [f"unsupported claims ledger schema version: {version}"]
+    claims = ledger.get("claims", [])
+    if not isinstance(claims, list) or any(not isinstance(claim, dict) for claim in claims):
+        return ["claims evidence ledger must contain a list of claim objects"]
     if required and not claims:
         return ["claims evidence ledger contains no claims"]
-    required_fields = set(ledger.get("required_fields") or [])
+    required_fields = CLAIM_FIELDS if version == CLAIMS_SCHEMA_VERSION else ledger.get("required_fields") or []
     errors = []
     for index, claim in enumerate(claims, start=1):
         missing = sorted(field for field in required_fields if claim.get(field) in (None, "", []))
@@ -359,6 +436,12 @@ def check_claims_ledger(workspace: Path, required: bool) -> list[str]:
             errors.append(f"claim ledger item {index} has invalid claim_kind")
         if claim.get("evidence_strength") not in set(ledger.get("allowed_evidence_strength") or []):
             errors.append(f"claim ledger item {index} has invalid evidence_strength")
+    if version == CLAIMS_SCHEMA_VERSION and claims and not errors:
+        visible = re.sub(r"<!--.*?-->", "", strip_code_fences(text), flags=re.S)
+        body = re.search(r"^## 1\. .*?(?=^## 附录|\Z)", visible, flags=re.M | re.S)
+        errors.extend(check_paper_evidence(
+            workspace, ledger, section_text(visible, CLAIMS_HEADING), body.group() if body else "",
+        ))
     return errors
 
 
@@ -398,6 +481,7 @@ def run_checks(report_path: Path, workspace: Path, schema: dict, require_manifes
     _frontmatter, frontmatter_errors = check_frontmatter(text, schema)
     errors.extend(frontmatter_errors)
     errors.extend(check_heading_schema(text, schema))
+    errors.extend(check_research_logic(text, schema))
     errors.extend(check_quicklook(text, schema))
     errors.extend(check_required_tables(text, schema))
     errors.extend(check_claim_locations(text))
@@ -410,7 +494,7 @@ def run_checks(report_path: Path, workspace: Path, schema: dict, require_manifes
     errors.extend(check_external_evidence(text, schema))
     errors.extend(check_repeated_paragraphs(text))
     errors.extend(check_chapter_manifest(workspace, report_path, require_manifest))
-    errors.extend(check_claims_ledger(workspace, require_manifest))
+    errors.extend(check_claims_ledger(workspace, require_manifest, text))
     return errors, warnings, {"images_checked": image_count, "bytes": len(text.encode("utf-8"))}
 
 

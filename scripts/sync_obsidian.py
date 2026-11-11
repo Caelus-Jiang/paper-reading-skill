@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from common import atomic_write_text, get_workspace, write_json
+from common import atomic_write_text, get_workspace, write_json, workspace_report_path
 from paper_index import (
     FLAT_INDEX_FILENAME,
     load_index,
@@ -297,7 +297,7 @@ def resolve_source(args: argparse.Namespace) -> tuple[Path, Path]:
         report = Path(args.report_path).expanduser().resolve()
         return report.parent, report
     workspace, ids = get_workspace(Path(args.root).resolve(), args.paper_input)
-    report = workspace / f"{ids['arxiv_id']}_阅读报告.md"
+    report = workspace_report_path(workspace, ids)
     return workspace, report
 
 

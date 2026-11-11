@@ -6,7 +6,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from common import atomic_write_text, get_workspace
+from build_report_skeleton import quicklook_fragment
+from common import atomic_write_text, get_workspace, workspace_report_path
 from report_schema import load_report_schema
 
 
@@ -49,7 +50,7 @@ def split_report(workspace: Path, report_path: Path, overwrite: bool = False) ->
             raise FileExistsError(f"Chapter fragment exists; pass --overwrite-fragments: {target}")
         start = starts[index]
         if start is None:
-            fragment = missing_chapter_fragment(chapter)
+            fragment = quicklook_fragment(chapter, schema) if chapter["file"] == "00_quicklook.md" else missing_chapter_fragment(chapter)
             print(f"Created migration placeholder for missing chapter: {chapter['heading']}")
         else:
             following = next((value for value in starts[index + 1:] if value is not None), len(text))
@@ -65,7 +66,7 @@ def main() -> int:
     parser.add_argument("--overwrite-fragments", action="store_true")
     args = parser.parse_args()
     workspace, ids = get_workspace(Path(args.root).resolve(), args.paper_input)
-    report = workspace / f"{ids['arxiv_id']}_阅读报告.md"
+    report = workspace_report_path(workspace, ids)
     chapters = split_report(workspace, report, args.overwrite_fragments)
     print("Chapter fragments created:", chapters)
     return 0

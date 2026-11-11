@@ -15,6 +15,8 @@ from typing import Dict, List, Optional
 
 import yaml
 
+from common import read_workspace_metadata
+
 
 INDEX_FILENAME = "paper_index.json"
 FLAT_INDEX_FILENAME = ".paper-reading-index.json"
@@ -81,7 +83,7 @@ def _build_entry_from_metadata(dir_name: str, metadata: Dict) -> Dict:
         "dir_name": dir_name,
         "arxiv_id": metadata.get("arxiv_id", ""),
         "title": metadata.get("title", ""),
-        "workspace_name": metadata.get("workspace_name", ""),
+        "workspace_name": metadata.get("workspace_name") or dir_name,
         "version": metadata.get("version", ""),
         "created_at": metadata.get("created_at", ""),
         "input": metadata.get("input", ""),
@@ -142,7 +144,7 @@ def scan_all_workspaces(output_root: Path) -> List[Dict]:
         if not metadata_path.exists():
             continue
         try:
-            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            metadata = read_workspace_metadata(metadata_path)
         except (json.JSONDecodeError, OSError):
             continue
         entries.append(_build_entry_from_metadata(candidate.name, metadata))
@@ -311,7 +313,7 @@ def add_entry(output_root: Path, dir_name: str) -> Dict:
     data = ensure_index(output_root)
     metadata_path = output_root / dir_name / "metadata.json"
     try:
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata = read_workspace_metadata(metadata_path)
     except (json.JSONDecodeError, OSError):
         metadata = {}
     entry = _build_entry_from_metadata(dir_name, metadata)

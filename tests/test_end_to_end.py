@@ -16,6 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = PROJECT_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
+from build_report_skeleton import quicklook_fragment
 from common import atomic_write_text, write_json  # noqa: E402
 from check_report_quality import run_checks  # noqa: E402
 from merge_chapters import merge_workspace  # noqa: E402
@@ -31,7 +32,6 @@ def make_metadata(workspace: Path) -> dict:
         "title": "Fixture Paper",
         "workspace_name": workspace.name,
         "version": "v1",
-        "paper_id_with_version": versioned,
         "arxiv_abs_url": f"https://arxiv.org/abs/{versioned}",
         "arxiv_pdf_url": f"https://arxiv.org/pdf/{versioned}.pdf",
         "hjfy_url": f"https://hjfy.top/arxiv/{versioned}",
@@ -106,10 +106,19 @@ Figure~\ref{fig:fixture} shows the method.
             self.assertTrue((workspace / "images" / "figure_01.png").exists())
             self.assertIn("Fixture paper page text", (workspace / "cache" / "paper_text.txt").read_text(encoding="utf-8"))
             report = workspace / "2401.12345_阅读报告.md"
-            self.assertFalse(report.read_text(encoding="utf-8").startswith("# "))
-            self.assertIn("## 0. 第一性原理论文速览", report.read_text(encoding="utf-8"))
+            report_text = report.read_text(encoding="utf-8")
+            self.assertFalse(report_text.startswith("# "))
+            self.assertIn('arxiv_id: "2401.12345v1"', report_text)
+            self.assertIn("## 0. 第一性原理论文速览", report_text)
             self.assertTrue((workspace / "cache" / "chapters" / "00_quicklook.md").exists())
             self.assertTrue((workspace / "cache" / "chapter_manifest.json").exists())
+            ledger = json.loads((workspace / "cache" / "claims.json").read_text(encoding="utf-8"))
+            self.assertEqual(ledger["schema_version"], "2.0")
+            self.assertEqual(ledger["paper_source"], {
+                "version": "arXiv 2401.12345v1",
+                "pdf_path": "raw/paper.pdf",
+                "pdf_url": "https://arxiv.org/pdf/2401.12345v1.pdf",
+            })
 
     def test_legacy_report_split_adds_quicklook_migration_fragment(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -144,17 +153,23 @@ Figure~\ref{fig:fixture} shows the method.
                 workspace / "cache" / "images_manifest.json",
                 {"figures": [{"saved_path": "images/figure_01.png", "source": "arxiv_source"}]},
             )
+            with fitz.open() as pdf:
+                pdf.new_page().insert_text((35, 45), "Uniform sampling is assumed.")
+                pdf.save(workspace / "raw/paper.pdf")
+            source_url = "https://arxiv.org/pdf/2401.12345v1.pdf"
+            source_link = f"[arXiv 2401.12345v1 · PDF 第 1 页 · Section 1]({source_url}#page=1)"
             write_json(
                 workspace / "cache" / "claims.json",
                 {
-                    "required_fields": ["claim_id", "claim", "claim_kind", "paper_location", "evidence", "evidence_strength", "reviewer_conclusion"],
+                    "schema_version": "2.0",
+                    "paper_source": {"version": "arXiv 2401.12345v1", "pdf_path": "raw/paper.pdf", "pdf_url": source_url},
                     "allowed_claim_kind": ["author_explicit", "author_implicit", "reviewer_inference"],
                     "allowed_evidence_strength": ["strong", "partial", "indirect", "insufficient"],
                     "claims": [{
                         "claim_id": "C1",
                         "claim": "Fixture claim",
                         "claim_kind": "author_explicit",
-                        "paper_location": "Section 1",
+                        "citations": [{"page": 1, "locator": "Section 1", "quote": "Uniform sampling is assumed."}],
                         "evidence": "Table 1",
                         "evidence_strength": "partial",
                         "reviewer_conclusion": "Partially supported"
@@ -185,20 +200,29 @@ cssclasses: ["paper-reading-report"]
 """
             atomic_write_text(chapter_dir / "00_frontmatter.md", frontmatter)
             for chapter in schema["chapters"][1:]:
+                if chapter["file"] == "00_quicklook.md":
+                    fragment = quicklook_fragment(chapter, schema).replace("PAPER_READING_PLACEHOLDER", "Evidence-backed explanation")
+                    fragment = fragment.replace("**对应洞见**：Evidence-backed explanation", "**对应洞见**：I1——persistent state")
+                    atomic_write_text(chapter_dir / chapter["file"], fragment)
+                    continue
                 blocks = [chapter["heading"], "", "Evidence-backed chapter text."]
                 for heading in chapter.get("subheadings") or []:
                     blocks.extend(["", heading, "", "Evidence-backed section text."])
-                    if heading.startswith("### 0.4"):
-                        blocks.extend(["", "【Missing memory】 -> 【Persistent state is sufficient】 -> 【Add a recurrent state module】"])
-                    if heading.startswith("### 0.6"):
-                        blocks.extend(["", "Can the method preserve task history explicitly?"])
+                    if heading == schema["research_logic"]["parent_section"]:
+                        blocks.extend(["", schema["research_logic"]["heading"], "", "Section 1 motivates the design; Section 3 evaluates the resulting mechanism under the stated assumptions."])
                     if heading.startswith("### 1.3"):
-                        blocks.extend(["", "| 主张 ID | 主张 | 原文位置 | 证据 | 证据强度 | Reviewer 结论 |", "|---|---|---|---|---|---|", "| C1 | Fixture | Section 1 | Table 1 | 部分 | Partially supported |"])
+                        blocks.extend([
+                            "",
+                            "| 主张 ID | 主张内容 | 原文位置 | 证据 | 证据强度 | Reviewer 结论 |",
+                            "|---|---|---|---|---|---|",
+                            f"| C1 | Fixture claim | {source_link} | Table 1 | 部分 | Partially supported |",
+                        ])
                     if heading.startswith("### 3.3"):
                         blocks.extend(["", "| 数据集 | 方法 | 指标 | 数值 | 审稿人提示 |", "|---|---|---|---|---|", "| Fixture | Method | Score | 1.0 | Partial evidence |"])
                     if heading.startswith("### 4.5"):
                         blocks.extend(["", "| 论文标题 | arXiv ID | 作者 / 年份 | 来源 / 类型 | 与原论文关系 | 一句话概述 |", "|---|---|---|---|---|---|", "| Related | 2401.00001 | Author / 2024 | arXiv preprint | Competing | A verified competing paper |"])
                 if chapter["file"] == "02_theory_and_method.md":
+                    blocks.extend(["", f'> **原文依据（C1）** {source_link} · “Uniform sampling is assumed.”'])
                     blocks.extend(["", "![Fixture figure](images/figure_01.png)", "The figure provides direct visual context for the method.", "", "式 (1) defines the fixture objective.", "", "$$ x = 1 \\tag{1} $$"])
                 if chapter["file"] == "07_appendices.md":
                     blocks.extend(["", "Verified source: https://arxiv.org/abs/2401.00001"])

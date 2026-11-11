@@ -7,8 +7,12 @@ import argparse
 import json
 from pathlib import Path
 
-from common import atomic_write_text, get_workspace, read_json, write_json
+from common import (
+    arxiv_id_with_version, atomic_write_text, get_workspace, read_workspace_metadata,
+    workspace_report_path, workspace_source_urls, write_json,
+)
 from merge_chapters import merge_workspace
+from paper_evidence import CLAIMS_SCHEMA_VERSION, CLAIM_FIELDS, default_paper_source
 from report_schema import DEFAULT_SCHEMA_PATH, load_report_schema
 
 
@@ -20,11 +24,12 @@ def yaml_string(value: object) -> str:
 
 
 def frontmatter_fragment(metadata: dict) -> str:
-    arxiv_id = str(metadata.get("paper_id_with_version") or metadata.get("arxiv_id") or "")
+    arxiv_id = arxiv_id_with_version(metadata)
     year_text = "20" + arxiv_id[:2] if len(arxiv_id) >= 2 and arxiv_id[:2].isdigit() else "null"
     authors = metadata.get("authors") or []
     institutions = metadata.get("institutions") or []
     aliases = metadata.get("aliases") or []
+    urls = workspace_source_urls(metadata)
     return "\n".join(
         [
             "---",
@@ -34,9 +39,9 @@ def frontmatter_fragment(metadata: dict) -> str:
             f"venue: {yaml_string(metadata.get('venue') or 'arXiv preprint')}",
             f"year: {year_text}",
             f"arxiv_id: {yaml_string(arxiv_id)}",
-            f"arxiv_url: {yaml_string(metadata.get('arxiv_abs_url') or '')}",
-            f"hjfy_url: {yaml_string(metadata.get('hjfy_url') or '')}",
-            f"papers_cool_url: {yaml_string(metadata.get('papers_cool_url') or '')}",
+            f"arxiv_url: {yaml_string(urls['arxiv_abs_url'] or '')}",
+            f"hjfy_url: {yaml_string(urls['hjfy_url'] or '')}",
+            f"papers_cool_url: {yaml_string(urls['papers_cool_url'] or '')}",
             'research_area: ""',
             "tags:",
             "  - paper-reading",
@@ -63,22 +68,23 @@ def table_for_heading(heading: str) -> str | None:
     return None
 
 
-def chapter_fragment(chapter: dict) -> str:
+def chapter_fragment(chapter: dict, schema: dict | None = None) -> str:
+    logic = (schema or load_report_schema()).get("research_logic", {})
     blocks = [chapter["heading"]]
     for heading in chapter.get("subheadings") or []:
         blocks.extend(["", heading, "", PLACEHOLDER])
+        if heading == logic.get("parent_section"):
+            blocks.extend(["", logic["heading"], "", PLACEHOLDER])
         table = table_for_heading(heading)
         if table:
             blocks.extend(["", table])
     return "\n".join(blocks).rstrip() + "\n"
 
 
-def quicklook_fragment(chapter: dict) -> str:
+def quicklook_fragment(chapter: dict, schema: dict) -> str:
     prompts = {
         "### 0.1 ": ["- **输入 / 输出 / 目标 / 约束 / 假设**：PAPER_READING_PLACEHOLDER"],
         "### 0.2 ": ["- **基本困难与证据**：PAPER_READING_PLACEHOLDER"],
-        "### 0.3 ": ["- **Inspiration -> Insight -> 洞见类型**：PAPER_READING_PLACEHOLDER"],
-        "### 0.4 ": ["- 【PAPER_READING_PLACEHOLDER】 -> 【PAPER_READING_PLACEHOLDER】 -> 【PAPER_READING_PLACEHOLDER】"],
         "### 0.5 ": [
             "1. **情境延伸**：PAPER_READING_PLACEHOLDER",
             "2. **坏数据性质**：PAPER_READING_PLACEHOLDER",
@@ -86,6 +92,11 @@ def quicklook_fragment(chapter: dict) -> str:
         ],
         "### 0.6 ": ["- PAPER_READING_PLACEHOLDER？"],
     }
+    for rule in schema["quicklook"]["callouts"].values():
+        prompts[rule["section"]] = [
+            f"> [!{rule['type']}] {rule['id_prefix']}1｜PAPER_READING_PLACEHOLDER",
+            *[line for field in rule["fields"] for line in (">", f"> **{field}**：PAPER_READING_PLACEHOLDER")],
+        ]
     blocks = [chapter["heading"]]
     for heading in chapter.get("subheadings") or []:
         lines = next((value for prefix, value in prompts.items() if heading.startswith(prefix)), [PLACEHOLDER])
@@ -116,8 +127,8 @@ def main() -> int:
     args = parser.parse_args()
 
     workspace, ids = get_workspace(Path(args.root).resolve(), args.input)
-    metadata = read_json(workspace / "metadata.json")
-    report_path = workspace / f"{ids['arxiv_id']}_阅读报告.md"
+    metadata = read_workspace_metadata(workspace / "metadata.json")
+    report_path = workspace_report_path(workspace, ids)
     if report_path.exists() and not args.overwrite_report:
         print("Report already exists; skeleton left untouched:", report_path)
         return 0
@@ -131,17 +142,10 @@ def main() -> int:
         write_json(
             claims_path,
             {
-                "schema_version": "1.0",
+                "schema_version": CLAIMS_SCHEMA_VERSION,
+                "paper_source": default_paper_source(metadata),
                 "claims": [],
-                "required_fields": [
-                    "claim_id",
-                    "claim",
-                    "claim_kind",
-                    "paper_location",
-                    "evidence",
-                    "evidence_strength",
-                    "reviewer_conclusion"
-                ],
+                "required_fields": list(CLAIM_FIELDS),
                 "allowed_claim_kind": ["author_explicit", "author_implicit", "reviewer_inference"],
                 "allowed_evidence_strength": ["strong", "partial", "indirect", "insufficient"],
                 "code_paper_audit": {"official_code_url": "", "revision": "", "findings": []}
@@ -151,11 +155,11 @@ def main() -> int:
         if chapter["file"] == "00_frontmatter.md":
             content = frontmatter_fragment(metadata)
         elif chapter["file"] == "00_quicklook.md":
-            content = quicklook_fragment(chapter)
+            content = quicklook_fragment(chapter, schema)
         elif chapter["file"] == "07_appendices.md":
             content = appendix_fragment(chapter)
         else:
-            content = chapter_fragment(chapter)
+            content = chapter_fragment(chapter, schema)
         atomic_write_text(chapters_dir / chapter["file"], content)
 
     merge_workspace(

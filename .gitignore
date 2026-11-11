@@ -1,5 +1,22 @@
+# OS metadata
+.DS_Store
+._*
+Thumbs.db
+
+# Python caches and virtual environments
 __pycache__
+*.py[cod]
+.pytest_cache/
+.venv/
 .venv-paper-reading
+
+# Generated reports
 output
+
+# Local configuration
 paper-reading.local.json
+.env
+.env.*
+!.env.example
+!.env.*.example
 

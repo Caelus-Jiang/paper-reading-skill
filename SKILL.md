@@ -55,22 +55,19 @@ bash scripts/run_pipeline.sh "<论文输入>" --resume "<目录名>" --force-sta
 仅使用通过抓取器验证且在 metadata 中标为成功的材料。ar5iv、hjfy 或 papers.cool 失败不阻塞论文分析；明确记录缺口，不读取错误页或 JS shell 来补事实。
 
 若用户输入带 arXiv 版本号，严格使用该版本。若未带版本号，解析最新版本；恢复旧工作区时核对版本是否变化。
+采用用户提供的 PDF 时，先确认稿件版本和可读性，再将该文件登记为报告的主来源。
 
 ## 3. 建立主张—证据账本
 
-在写正文前填充 `cache/claims.json`。每条核心主张必须包含：
-
-- `claim_id`
-- `claim`
-- `claim_kind`：`author_explicit`、`author_implicit` 或 `reviewer_inference`
-- `paper_location`
-- `evidence`
-- `evidence_strength`：`strong`、`partial`、`indirect` 或 `insufficient`
-- `reviewer_conclusion`
+写正文前按[原文证据规范](references/report-writing-guidelines.md#原文证据)填充 `cache/claims.json`。核对账本中的 `paper_source` 是报告实际采用的 PDF。每条核心主张记录 `claim_id`、`claim`、`claim_kind`、`citations`、`evidence`、`evidence_strength` 和 `reviewer_conclusion`。在 1.3 登记首条定位，在深读章节的论证旁展示证据和必要的英文短引。
 
 严格区分作者原话、由原文稳妥推出的隐含主张和 reviewer 自己的解释。不得把相关性写成因果性，不得把定性案例写成普遍结论。
 
 阅读并遵循 [reviewer_rubric.md](references/reviewer_rubric.md) 和 [uncertainty_policy.md](references/uncertainty_policy.md)。
+
+### 3.1 梳理研究逻辑链
+
+按 [研究逻辑链规范](references/research-logic-chain.md)，在 §1.1 背景与动机之后、详细公式之前写出论文的论证主线。位置与标题由 canonical schema 的 `research_logic` 定义。将关键问题、观察或假设、设计选择、验证证据与边界连接起来；按论文类型保留必要的分支和缺口，不推测实际研究时间线。§0.6 只保留简短动机，方法与证据章节用过渡句接回主线。自动验收仅检查该小节的位置及非空正文，论证关系由撰写者核对。
 
 ## 4. 执行 reviewer-level 分析
 
@@ -116,7 +113,7 @@ bash scripts/run_pipeline.sh "<论文输入>" --resume "<目录名>" --force-sta
 
 - 从对象、信息、目标、约束和最小假设出发，不照抄摘要或术语定义。
 - 严格区分 Inspiration、Insight 与 Novelty；作者未明说的动机链标为 reviewer 推断。
-- 每个 Novelty 使用“【解决的问题】 -> 【对应 Insight】 -> 【具体创新设计】”链式表达。
+- Insight 与 Novelty 逐条使用纵向 callout：`[!tip] I1｜洞见短标题`、`[!example] N1｜具体设计短标题`。字段与示例遵循速览规范和 canonical schema；Novelty 通过 I 编号关联洞见，不再使用长括号箭头链。
 - 速览内部不使用任何形式的 LaTeX，公式改用纯文本；后续深度章节仍遵循标准公式规范。
 - 省略所有客套话，直接进入结构化分析。
 
@@ -206,7 +203,7 @@ python3 scripts/finalize_report.py \
 - 图片存在性、可解码性和 manifest provenance 检查
 - 数学定界符、多行环境、连续 tag 与正文引用检查，并拒绝内部对齐环境中的 tag
 - chapter manifest 与报告哈希检查
-- claims ledger 字段与证据类型检查
+- claims ledger 字段与证据类型检查，新账本另核对核心主张覆盖、正文与账本引用一致性，以及摘录所在的 PDF 页
 
 静态检查不能替代实际渲染。含公式且真实 Obsidian 可用时，同步后按 [mathjax-validation.md](references/mathjax-validation.md) 对全部块级与行内公式逐式调用 MathJax，记录检查数量和错误，再在页面核对多行公式及编号。引擎不可用时明确记录未验证，不得声称“显示正常”。
 

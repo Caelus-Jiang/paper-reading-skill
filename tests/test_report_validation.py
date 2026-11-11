@@ -5,13 +5,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import fitz
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 import check_report_quality  # noqa: E402
 import sync_obsidian  # noqa: E402
-from common import reject_ambiguous_reports  # noqa: E402
+from common import reject_ambiguous_reports, write_json  # noqa: E402
 from report_schema import load_report_schema  # noqa: E402
 
 
@@ -44,20 +46,61 @@ class ReportValidationTests(unittest.TestCase):
 """
         self.assertTrue(any("C1" in error for error in check_report_quality.check_claim_locations(text)))
 
-    def test_quicklook_requires_plain_text_novelty_chain_and_question(self):
-        schema = load_report_schema()
-        text = """## 0. 第一性原理论文速览
-### 0.4 Novelty：将 Insight 落成什么创新
-【长程依赖】 -> 【保留状态足够】 -> 【增加循环状态模块】
-### 0.6 Motivation：如何从第一性原理想到本文
-之前的方法会丢失状态，那可不可以显式保留历史？
-## 1. 论文核心观点与主张的系统梳理
+    def test_structured_citations_match_pdf_page_and_report(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            raw = workspace / "raw"
+            raw.mkdir()
+            (workspace / "cache").mkdir()
+            with fitz.open() as pdf:
+                pdf.new_page().insert_text((35, 45), "Uniform sam-\npling with time-\nlimited episodes.")
+                pdf.new_page().insert_text((35, 45), "Table 1. Full model: 91%.")
+                pdf.save(raw / "conference.pdf")
+            link = "[CoRL 2026 · PDF 第 1 页 · §1 第 2 段](https://example.org/conference.pdf#page=1)"
+            citation_line = f"> **原文依据（C1）** {link} · “Uniform sampling with time-limited episodes.”"
+            report = f"""## 1. 论文核心观点与主张的系统梳理
+### 1.3 核心观点（Claims）的逐条梳理
+| 主张 ID | 主张内容 | 原文位置 |
+|---|---|---|
+| C1 | 假设均匀采样 | {link} |
+
+## 2. 关键论据
+{citation_line}
+> **原文依据（C1）** [CoRL 2026 · PDF 第 2 页 · 表 1 Full 行](https://example.org/conference.pdf#page=2)
 """
-        self.assertEqual(check_report_quality.check_quicklook(text, schema), [])
-        errors = check_report_quality.check_quicklook(text.replace("显式保留历史？", "$h_t$？"), schema)
-        self.assertTrue(any("no LaTeX" in error for error in errors))
-        errors = check_report_quality.check_quicklook(text.replace("显式保留历史？", r"保留 \mathbf{h}？"), schema)
-        self.assertTrue(any("no LaTeX" in error for error in errors))
+            claim = {
+                "claim_id": "C1", "claim": "假设均匀采样", "claim_kind": "author_explicit",
+                "citations": [
+                    {"page": 1, "locator": "§1 第 2 段", "quote": "Uniform sampling with time-limited episodes."},
+                    {"page": 2, "locator": "表 1 Full 行"},
+                ],
+                "evidence": "Full 行成功率 91%。", "evidence_strength": "partial", "reviewer_conclusion": "仅限该设置。",
+            }
+            ledger = {
+                "schema_version": "2.0",
+                "paper_source": {
+                    "version": "CoRL 2026", "pdf_path": "raw/conference.pdf", "pdf_url": "https://example.org/conference.pdf",
+                },
+                "claims": [claim],
+                "allowed_claim_kind": ["author_explicit"],
+                "allowed_evidence_strength": ["partial"],
+            }
+            path = workspace / "cache/claims.json"
+            write_json(path, ledger)
+            check = check_report_quality.check_claims_ledger
+            self.assertEqual(check(workspace, True, report), [])
+
+            with self.subTest("PDF link differs from ledger"):
+                errors = check(workspace, True, report.replace(link, link.replace("page=1", "page=2")))
+                self.assertTrue(any("primary citation differs" in error for error in errors), errors)
+            with self.subTest("quote exists only in the appendix"):
+                errors = check(workspace, True, report.replace(citation_line, "") + "\n## 附录 A\n" + citation_line)
+                self.assertTrue(any("report body differ" in error for error in errors), errors)
+            with self.subTest("quote exists on a different PDF page"):
+                claim["citations"][0]["page"] = 2
+                write_json(path, ledger)
+                errors = check(workspace, True, report)
+                self.assertIn("C1 quote was not found on PDF page 2", errors)
 
     def test_obsidian_sync_refuses_to_inject_frontmatter(self):
         with self.assertRaises(ValueError):

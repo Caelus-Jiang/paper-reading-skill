@@ -9,7 +9,10 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from common import read_json, write_json
+from common import (
+    arxiv_id_with_version, read_json, read_workspace_metadata, workspace_report_path,
+    workspace_source_urls, write_json,
+)
 
 
 STAGE_SPECS = {
@@ -45,17 +48,13 @@ def sha256_path(path: Path) -> str:
     return digest.hexdigest()
 
 
-def report_relative(workspace: Path) -> str:
-    metadata = read_json(workspace / "metadata.json")
-    return Path(metadata["report_path"]).name
-
-
 def resolve_paths(workspace: Path, values: list[str], project_root: Path) -> list[Path]:
-    report = report_relative(workspace)
     resolved = []
     for value in values:
-        value = value.replace("{report}", report)
-        if value.startswith("references/"):
+        if value == "{report}":
+            metadata = read_workspace_metadata(workspace / "metadata.json")
+            resolved.append(workspace_report_path(workspace, metadata))
+        elif value.startswith("references/"):
             resolved.append(project_root / value)
         else:
             resolved.append(workspace / value)
@@ -64,15 +63,18 @@ def resolve_paths(workspace: Path, values: list[str], project_root: Path) -> lis
 
 def fingerprint(workspace: Path, stage: str, script: Path, project_root: Path) -> tuple[str, dict]:
     spec = STAGE_SPECS[stage]
-    metadata = read_json(workspace / "metadata.json")
+    metadata = read_workspace_metadata(workspace / "metadata.json")
     inputs = resolve_paths(workspace, spec["inputs"], project_root)
     payload = {
         "stage": stage,
-        "paper_id_with_version": metadata.get("paper_id_with_version", ""),
+        # Keep the existing payload key so equivalent arXiv metadata hashes the same.
+        "paper_id_with_version": arxiv_id_with_version(metadata),
         "script": str(script.resolve()),
         "script_sha256": sha256_path(script),
         "inputs": {str(path): sha256_path(path) for path in inputs},
     }
+    if stage == "fetch_sources":
+        payload["source_urls"] = workspace_source_urls(metadata)
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest(), payload
 

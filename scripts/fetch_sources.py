@@ -16,7 +16,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from common import atomic_write_bytes, get_workspace, read_json, write_json
+from common import atomic_write_bytes, compact_workspace_metadata, get_workspace, read_workspace_metadata, write_json
 
 
 def build_session() -> requests.Session:
@@ -157,7 +157,7 @@ def main() -> int:
     root = Path(args.root).resolve()
     workspace, ids = get_workspace(root, args.input)
     metadata_path = workspace / "metadata.json"
-    metadata = read_json(metadata_path)
+    metadata = compact_workspace_metadata(workspace, read_workspace_metadata(metadata_path))
     session = build_session()
 
     specs = [
@@ -177,11 +177,6 @@ def main() -> int:
     )
 
     metadata["fetch_results"] = results
-    internal = metadata.setdefault("internal_status", {})
-    internal["hjfy_visit_status"] = "已访问" if results["hjfy"].get("ok") else "访问失败"
-    internal["papers_cool_rel_status"] = (
-        "已取得相关检索页面" if results["papers_cool_related"].get("ok") else "未取得可验证的相关检索页面"
-    )
     write_json(metadata_path, metadata)
 
     required_failures = [name for name, _url, _path, _kind, required in specs if required and not results[name].get("ok")]

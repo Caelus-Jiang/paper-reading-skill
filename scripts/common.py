@@ -16,6 +16,28 @@ META_TITLE_RE = re.compile(r'<meta[^>]+name=["\']citation_title["\'][^>]+content
 INVALID_PATH_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
 WHITESPACE_RE = re.compile(r'\s+')
 MAX_TITLE_SLUG_CHARS = 140
+LEGACY_ARTIFACT_PATHS = {
+    "raw_abs_html": "raw/abs.html",
+    "raw_pdf": "raw/paper.pdf",
+    "raw_ar5iv_html": "raw/ar5iv.html",
+    "raw_src_tar": "raw/source.tar",
+    "raw_hjfy_html": "raw/hjfy.html",
+    "raw_papers_cool_html": "raw/papers_cool.html",
+    "cache_references_json": "cache/references.json",
+    "cache_images_manifest": "cache/images_manifest.json",
+}
+SOURCE_URL_TEMPLATES = {
+    "arxiv_abs_url": "https://arxiv.org/abs/{}",
+    "arxiv_pdf_url": "https://arxiv.org/pdf/{}.pdf",
+    "hjfy_url": "https://hjfy.top/arxiv/{}",
+    "papers_cool_url": "https://papers.cool/arxiv/{}",
+    "ar5iv_url": "https://ar5iv.org/html/{}",
+    "arxiv_src_url": "https://arxiv.org/src/{}",
+}
+FETCH_STATUS_LABELS = {
+    "hjfy_visit_status": ("hjfy", "已访问", "访问失败"),
+    "papers_cool_rel_status": ("papers_cool_related", "已取得相关检索页面", "未取得可验证的相关检索页面"),
+}
 
 
 def extract_arxiv_id(text: str) -> Optional[Tuple[str, Optional[str]]]:
@@ -90,28 +112,39 @@ def build_workspace_name(arxiv_id: str, title: Optional[str]) -> str:
     return f"{arxiv_id}_{title_slug}" if title_slug else arxiv_id
 
 
+def arxiv_id_with_version(metadata: Dict) -> str:
+    base_id = str(metadata.get("arxiv_id") or "")
+    candidate = f"{base_id}{metadata.get('version') or ''}"
+    match = ARXIV_ID_RE.fullmatch(candidate)
+    # Manually prepared workspaces can use non-arXiv IDs and descriptive versions.
+    return candidate if match and match.group("base") == base_id else base_id
+
+
+def default_source_urls(metadata: Dict) -> Dict[str, str]:
+    base_id = str(metadata.get("arxiv_id") or "")
+    match = ARXIV_ID_RE.fullmatch(base_id)
+    if metadata.get("is_arxiv") is False or not match or match.group("version"):
+        return {}
+    versioned_id = arxiv_id_with_version(metadata)
+    return {field: template.format(versioned_id) for field, template in SOURCE_URL_TEMPLATES.items()}
+
+
+def workspace_source_urls(metadata: Dict) -> Dict:
+    defaults = default_source_urls(metadata)
+    return {field: metadata.get(field, defaults.get(field, "")) for field in SOURCE_URL_TEMPLATES}
+
+
 def resolve_ids(input_text: str) -> Dict[str, str]:
     parsed = extract_arxiv_id(input_text)
     if not parsed:
         raise ValueError(f"Could not parse arXiv id from input: {input_text}")
     base_id, version = parsed
     metadata = fetch_arxiv_metadata(base_id, version)
-    latest = metadata["version"]
-    title = metadata["title"] or ""
-    paper_id_with_version = f"{base_id}{latest}" if latest else base_id
     return {
         "input": input_text,
         "arxiv_id": base_id,
-        "title": title,
-        "workspace_name": build_workspace_name(base_id, title),
-        "version": latest or "",
-        "paper_id_with_version": paper_id_with_version,
-        "arxiv_abs_url": f"https://arxiv.org/abs/{paper_id_with_version}",
-        "arxiv_pdf_url": f"https://arxiv.org/pdf/{paper_id_with_version}.pdf",
-        "hjfy_url": f"https://hjfy.top/arxiv/{paper_id_with_version}",
-        "papers_cool_url": f"https://papers.cool/arxiv/{paper_id_with_version}",
-        "ar5iv_url": f"https://ar5iv.org/html/{paper_id_with_version}",
-        "arxiv_src_url": f"https://arxiv.org/src/{paper_id_with_version}",
+        "title": metadata["title"] or "",
+        "version": metadata["version"] or "",
     }
 
 
@@ -135,6 +168,103 @@ def read_json(path: Path) -> Dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def read_workspace_metadata(path: Path) -> Dict:
+    metadata = read_json(path)
+    legacy_id = metadata.pop("paper_id_with_version", "")
+    if legacy_id and not metadata.get("version"):
+        match = ARXIV_ID_RE.fullmatch(str(legacy_id))
+        if match and match.group("base") == metadata.get("arxiv_id"):
+            metadata["version"] = match.group("version") or ""
+    return metadata
+
+
+def default_report_filename(arxiv_id: str) -> str:
+    return f"{arxiv_id}_阅读报告.md"
+
+
+def recorded_default_workspace(workspace: Path, metadata: Dict) -> Optional[Path]:
+    if not metadata.get("workspace"):
+        return None
+    recorded = Path(metadata["workspace"]).expanduser()
+    if workspace / recorded == workspace:
+        return workspace
+    # Older writers stored a matching directory name and absolute report path.
+    report = default_report_filename(metadata.get("arxiv_id", ""))
+    if (
+        recorded.is_absolute()
+        and metadata.get("workspace_name") == recorded.name
+        and metadata.get("report_path") == str(recorded / report)
+        and (recorded.name == workspace.name or not recorded.is_dir())
+    ):
+        return recorded
+    return None
+
+
+def workspace_report_path(workspace: Path, metadata: Dict) -> Path:
+    filename = default_report_filename(metadata.get("arxiv_id", ""))
+    recorded = recorded_default_workspace(workspace, metadata) or workspace
+    if metadata.get("report_path"):
+        path = workspace / Path(metadata["report_path"]).expanduser()
+        if path not in (workspace / filename, recorded / filename):
+            return path
+    return workspace / Path(metadata.get("report_filename") or filename).expanduser()
+
+
+def compact_workspace_metadata(workspace: Path, metadata: Dict) -> Dict:
+    """Omit generated defaults when preparing a metadata write."""
+    compact = dict(metadata)
+    recorded = recorded_default_workspace(workspace, metadata)
+    if recorded is not None:
+        compact.pop("workspace", None)
+    recorded = recorded or workspace
+    if compact.get("workspace_name") in (workspace.name, recorded.name):
+        compact.pop("workspace_name")
+
+    filename = default_report_filename(metadata.get("arxiv_id", ""))
+    for field in ("report_path", "report_filename"):
+        if compact.get(field) and workspace / Path(compact[field]).expanduser() in (
+            workspace / filename, recorded / filename
+        ):
+            compact.pop(field)
+
+    paths = compact.get("paths")
+    if isinstance(paths, dict):
+        paths = dict(paths)
+        for field, relative in LEGACY_ARTIFACT_PATHS.items():
+            if paths.get(field) and workspace / Path(paths[field]).expanduser() in (
+                workspace / relative, recorded / relative
+            ):
+                paths.pop(field)
+        if paths:
+            compact["paths"] = paths
+        else:
+            compact.pop("paths")
+
+    if compact.get("resolved_at") and compact.get("updated_at") == compact["resolved_at"]:
+        compact.pop("updated_at")
+
+    for field, url in default_source_urls(metadata).items():
+        if compact.get(field) == url:
+            compact.pop(field)
+
+    statuses = compact.get("internal_status")
+    results = compact.get("fetch_results") or {}
+    if isinstance(statuses, dict) and isinstance(results, dict):
+        statuses = dict(statuses)
+        for field, (source, success, failure) in FETCH_STATUS_LABELS.items():
+            result = results.get(source)
+            expected = "未尝试" if source not in results else None
+            if isinstance(result, dict) and isinstance(result.get("ok"), bool):
+                expected = success if result["ok"] else failure
+            if expected is not None and statuses.get(field) == expected:
+                statuses.pop(field)
+        if statuses:
+            compact["internal_status"] = statuses
+        else:
+            compact.pop("internal_status")
+    return compact
+
+
 def reject_ambiguous_reports(root: Path, paper_input: str) -> None:
     direct = Path(paper_input)
     if direct.is_dir() or (root / paper_input).is_dir():
@@ -143,7 +273,19 @@ def reject_ambiguous_reports(root: Path, paper_input: str) -> None:
     if not parsed:
         return
     arxiv_id = parsed[0]
-    reports = sorted(root.glob(f"{arxiv_id}_*/{arxiv_id}_阅读报告.md"))
+    reports = []
+    for workspace in sorted(root.glob(f"{arxiv_id}_*")):
+        if not workspace.is_dir():
+            continue
+        path = workspace / "metadata.json"
+        try:
+            metadata = read_workspace_metadata(path)
+        except (json.JSONDecodeError, OSError):
+            metadata = {}
+        metadata.setdefault("arxiv_id", arxiv_id)
+        report = workspace_report_path(workspace, metadata)
+        if report.is_file():
+            reports.append(report)
     if len(reports) > 1:
         raise ValueError(
             f"Multiple reports for {arxiv_id}; pass a workspace directory or --report-path: "
@@ -151,9 +293,7 @@ def reject_ambiguous_reports(root: Path, paper_input: str) -> None:
         )
 
 
-def _find_cached_workspace(root: Path, arxiv_id: str):
-    """Search for an existing workspace directory matching the arxiv_id, and
-    return its metadata.json if present."""
+def _find_cached_workspace(root: Path, arxiv_id: str) -> Optional[Tuple[Path, Dict]]:
     candidates = sorted(
         path for path in root.glob(f"{arxiv_id}_*") if path.is_dir()
     )
@@ -161,13 +301,13 @@ def _find_cached_workspace(root: Path, arxiv_id: str):
         meta_path = candidate / "metadata.json"
         if meta_path.exists():
             try:
-                return read_json(meta_path)
+                return candidate, read_workspace_metadata(meta_path)
             except (json.JSONDecodeError, OSError):
                 continue
     return None
 
 
-def _search_metadata_by_input(root: Path, input_text: str) -> Optional[Dict]:
+def _search_metadata_by_input(root: Path, input_text: str) -> Optional[Tuple[Path, Dict]]:
     """Search all metadata.json files for one whose input field matches input_text.
 
     Also checks ``original_url`` to support non-arXiv papers whose metadata
@@ -175,7 +315,7 @@ def _search_metadata_by_input(root: Path, input_text: str) -> Optional[Dict]:
     """
     for meta_path in sorted(root.rglob("metadata.json")):
         try:
-            meta = read_json(meta_path)
+            meta = read_workspace_metadata(meta_path)
             matchable_fields = (
                 meta.get("input"),
                 meta.get("openreview_forum_url"),
@@ -183,9 +323,7 @@ def _search_metadata_by_input(root: Path, input_text: str) -> Optional[Dict]:
                 meta.get("original_url"),
             )
             if input_text in matchable_fields:
-                # Inject workspace path so callers can locate the directory
-                meta.setdefault("workspace", str(meta_path.parent))
-                return meta
+                return meta_path.parent, meta
         except (json.JSONDecodeError, OSError):
             continue
     return None
@@ -199,7 +337,7 @@ def get_workspace(root: Path, input_text: str):
     if direct.is_dir():
         meta_path = direct / "metadata.json"
         if meta_path.exists():
-            cached = read_json(meta_path)
+            cached = read_workspace_metadata(meta_path)
             ids = _build_ids_from_metadata(cached, input_text)
             for sub in ["raw", "images", "cache", "logs"]:
                 (direct / sub).mkdir(parents=True, exist_ok=True)
@@ -209,54 +347,46 @@ def get_workspace(root: Path, input_text: str):
     parsed = extract_arxiv_id(input_text)
     if parsed:
         base_id, requested_version = parsed
-        cached = _find_cached_workspace(root, base_id)
-        cached_version = str(cached.get("version") or "") if cached else ""
+        found = _find_cached_workspace(root, base_id)
+        candidate, cached = found if found else (root, {})
+        cached_version = str(cached.get("version") or "")
         version_matches = not requested_version or requested_version == cached_version
         if cached and cached.get("arxiv_id") == base_id and version_matches:
             ids = _build_ids_from_metadata(cached, input_text)
-            workspace = ensure_workspace(
-                root, ids["arxiv_id"], ids.get("title"), ids.get("workspace_name")
-            )
+            name = cached.get("workspace_name")
+            recorded = recorded_default_workspace(candidate, cached)
+            if name and (recorded is None or name != recorded.name) and (root / name).is_dir():
+                candidate = root / name
+            workspace = ensure_workspace(candidate.parent, base_id, workspace_name=candidate.name)
             return workspace, ids
 
     # Fallback: search metadata.json files by input URL (e.g., OpenReview links, non-arXiv PDFs)
     if not parsed:
-        cached = _search_metadata_by_input(root, input_text)
-        if cached:
+        found = _search_metadata_by_input(root, input_text)
+        if found:
+            candidate, cached = found
             ids = _build_ids_from_metadata(cached, input_text)
-            # Use workspace path directly from metadata if available
-            workspace_path = cached.get("workspace", "")
-            if workspace_path and Path(workspace_path).exists():
-                workspace = Path(workspace_path)
-            else:
-                workspace = ensure_workspace(
-                    root, ids["arxiv_id"], ids.get("title"), ids.get("workspace_name")
-                )
-            return workspace, ids
+            override = cached.get("workspace")
+            if override and recorded_default_workspace(candidate, cached) is None:
+                alternate = Path(override).expanduser()
+                if alternate.is_dir():
+                    return alternate, ids
+            return candidate, ids
 
     # Fall back to network fetch when no local cache exists
     ids = resolve_ids(input_text)
-    workspace = ensure_workspace(
-        root, ids["arxiv_id"], ids.get("title"), ids.get("workspace_name")
-    )
-    return workspace, ids
+    workspace = ensure_workspace(root, ids["arxiv_id"], ids.get("title"))
+    return workspace, _build_ids_from_metadata(ids, input_text)
 
 
 def _build_ids_from_metadata(cached: Dict, input_text: str) -> Dict:
     return {
-        "input": cached.get("input", input_text),
-        "arxiv_id": cached.get("arxiv_id", ""),
-        "title": cached.get("title", ""),
-        "workspace_name": cached.get("workspace_name", ""),
-        "version": cached.get("version", ""),
-        "paper_id_with_version": cached.get("paper_id_with_version", ""),
-        "arxiv_abs_url": cached.get("arxiv_abs_url", ""),
-        "arxiv_pdf_url": cached.get("arxiv_pdf_url", ""),
-        "hjfy_url": cached.get("hjfy_url", ""),
-        "papers_cool_url": cached.get("papers_cool_url", ""),
-        "ar5iv_url": cached.get("ar5iv_url", ""),
-        "arxiv_src_url": cached.get("arxiv_src_url", ""),
-        "report_filename": cached.get("report_filename", ""),
+        "input": input_text,
+        "arxiv_id": "",
+        "title": "",
+        "version": "",
+        **cached,
+        **workspace_source_urls(cached),
     }
 
 
