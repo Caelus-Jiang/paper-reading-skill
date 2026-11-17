@@ -75,9 +75,10 @@ bash scripts/run_pipeline.sh "<论文输入>" --resume "<目录名>" --force-sta
 
 - 还原问题设定、输入输出、变量、目标函数、约束、训练与推理路径。
 - 从核心结论、基线比较和训练目标倒查依赖的前置公式。按[前置数学推导规范](references/inline-table-and-formula-template.md#前置数学推导)在 §2.1–2.3 补齐关键中间步骤，展开深度由后文依赖决定。
+- 有连续依赖的公式时，按[推导链规范](references/inline-table-and-formula-template.md#按推导链组织正文)就地展开关键变换、近似和优化后果。适合数值化的机制优先跨公式复用同一个对照例，推导图逐幅对应公式项。
 - 识别 A 级公式：核心目标、模块定义、更新规则和理论结论。
 - 对全部 A 级公式解释符号、自然语言含义、工程映射、依赖假设和删除该项的后果。
-- 公式数量由论文类型和核心机制决定；原文无决定性公式时不要硬凑。适合数值化的关键公式可用极简 toy example 解释。
+- 公式数量由论文类型和核心机制决定；原文无决定性公式时不要硬凑。
 
 公式和表格的具体格式读取 [inline-table-and-formula-template.md](references/inline-table-and-formula-template.md)。
 
