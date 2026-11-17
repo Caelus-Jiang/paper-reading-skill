@@ -82,26 +82,7 @@ def chapter_fragment(chapter: dict, schema: dict | None = None) -> str:
 
 
 def quicklook_fragment(chapter: dict, schema: dict) -> str:
-    prompts = {
-        "### 0.1 ": ["- **输入 / 输出 / 目标 / 约束 / 假设**：PAPER_READING_PLACEHOLDER"],
-        "### 0.2 ": ["- **基本困难与证据**：PAPER_READING_PLACEHOLDER"],
-        "### 0.5 ": [
-            "1. **情境延伸**：PAPER_READING_PLACEHOLDER",
-            "2. **坏数据性质**：PAPER_READING_PLACEHOLDER",
-            "3. **最值得写成论文的困难**：PAPER_READING_PLACEHOLDER",
-        ],
-        "### 0.6 ": ["- PAPER_READING_PLACEHOLDER？"],
-    }
-    for rule in schema["quicklook"]["callouts"].values():
-        prompts[rule["section"]] = [
-            f"> [!{rule['type']}] {rule['id_prefix']}1｜PAPER_READING_PLACEHOLDER",
-            *[line for field in rule["fields"] for line in (">", f"> **{field}**：PAPER_READING_PLACEHOLDER")],
-        ]
-    blocks = [chapter["heading"]]
-    for heading in chapter.get("subheadings") or []:
-        lines = next((value for prefix, value in prompts.items() if heading.startswith(prefix)), [PLACEHOLDER])
-        blocks.extend(["", heading, "", *lines])
-    return "\n".join(blocks).rstrip() + "\n"
+    return chapter_fragment(chapter, schema).rstrip() + "\n\nPAPER_READING_PLACEHOLDER\n"
 
 
 def appendix_fragment(chapter: dict) -> str:

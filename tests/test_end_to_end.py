@@ -202,7 +202,6 @@ cssclasses: ["paper-reading-report"]
             for chapter in schema["chapters"][1:]:
                 if chapter["file"] == "00_quicklook.md":
                     fragment = quicklook_fragment(chapter, schema).replace("PAPER_READING_PLACEHOLDER", "Evidence-backed explanation")
-                    fragment = fragment.replace("**对应洞见**：Evidence-backed explanation", "**对应洞见**：I1——persistent state")
                     atomic_write_text(chapter_dir / chapter["file"], fragment)
                     continue
                 blocks = [chapter["heading"], "", "Evidence-backed chapter text."]

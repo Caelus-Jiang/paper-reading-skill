@@ -1,4 +1,4 @@
 interface:
   display_name: "Paper Reading"
-  short_description: "First-principles overview and reviewer-grade paper audit"
-  default_prompt: "Use $paper-reading to produce a first-principles overview and evidence-backed reviewer audit of this paper."
+  short_description: "Clear method explanations, evidence review, and Obsidian notes"
+  default_prompt: "Use $paper-reading to explain this paper's method clearly, examine its evidence, and sync the report to Obsidian."

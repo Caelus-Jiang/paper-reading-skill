@@ -132,6 +132,18 @@ def section_text(text: str, heading: str) -> str:
     return text[match.end():end]
 
 
+def explanatory_prose(text: str) -> str:
+    """Extract visible prose; the writer separately evaluates clarity and correctness."""
+    visible = re.sub(r"<!--.*?-->", "", strip_code_fences(text), flags=re.S)
+    visible = re.sub(r"\$\$[\s\S]*?\$\$|(?<!\\)\$[^$\n]+(?<!\\)\$", "", visible)
+    lines = []
+    for line in visible.splitlines():
+        line = re.sub(r"^\s*(?:>\s*)+", "", line).strip()
+        if not line.startswith(("#", "|", "!", "[!")):
+            lines.append(PLACEHOLDER_RE.sub("", line))
+    return "\n".join(lines).strip()
+
+
 def check_research_logic(text: str, schema: dict) -> list[str]:
     """Check placement and visible prose; argument validity needs reviewer judgment."""
     rule = schema.get("research_logic")
@@ -144,8 +156,7 @@ def check_research_logic(text: str, schema: dict) -> list[str]:
     if len(occurrences) != 1:
         return [f"research logic must appear once under {rule['parent_section']}: {heading}"]
     body = section_text(parent, heading)
-    prose = "\n".join(line for line in body.splitlines() if not line.lstrip().startswith(("#", "|", "!")))
-    if not PLACEHOLDER_RE.sub("", prose).strip():
+    if not explanatory_prose(body):
         return ["research logic needs visible explanatory prose; a diagram, table or placeholder alone is insufficient"]
     return []
 
@@ -199,82 +210,15 @@ def check_claim_locations(text: str) -> list[str]:
     return errors
 
 
-def check_quicklook_callouts(content: str, rule: dict) -> tuple[dict[str, dict], list[str]]:
-    """Validate every card, not just the first matching item in a section."""
-    errors = []
-    cards = {}
-    pattern = re.compile(r"(?m)^> \[!([^\]\n]+)\]([^\n]*)(?:\n>[^\n]*)*")
-    matches = list(pattern.finditer(content))
-    if not matches:
-        return cards, [f"quicklook {rule['id_prefix']} items must use vertical {rule['type']} callouts"]
-    if pattern.sub("", content).strip():
-        errors.append(f"quicklook {rule['id_prefix']} content must stay inside separate callouts")
-    for match in matches:
-        title = match.group(2).strip()
-        title_match = re.fullmatch(rf"({rule['id_prefix']}[1-9]\d*)\s*[｜|]\s*(\S.*)", title)
-        if match.group(1) != rule['type'] or not title_match:
-            errors.append(f"quicklook callout must use [!{rule['type']}] {rule['id_prefix']}1｜short title")
-            continue
-        item_id = title_match.group(1)
-        if item_id in cards:
-            errors.append(f"duplicate quicklook ID: {item_id}")
-        fields = {}
-        found_fields = []
-        for index, line in enumerate(match.group().splitlines()[1:], start=1):
-            if re.match(r"> \[!", line):
-                errors.append(f"{item_id}: separate adjacent callouts with a blank line")
-            field = re.fullmatch(r">\s*\*\*([^*]+)\*\*\s*[：:]\s*(.*)", line)
-            if field:
-                label, value = field.groups()
-                if label in rule['fields']:
-                    if found_fields and match.group().splitlines()[index - 1].strip() != ">":
-                        errors.append(f"{item_id} fields must be separated by a quoted blank line (>) to render vertically")
-                    found_fields.append(label)
-                    fields[label] = value.strip()
-                    if not value.strip() or re.search(r"\*\*[^*]+\*\*\s*[：:]", value):
-                        errors.append(f"{item_id} field {label} must have nonempty content on its own line")
-        if found_fields != rule['fields']:
-            errors.append(f"{item_id} must contain each vertical field once, in order: " + ', '.join(rule['fields']))
-        cards[item_id] = fields
-    return cards, errors
-
-
 def check_quicklook(text: str, schema: dict) -> list[str]:
     rules = schema.get("quicklook") or {}
     if not rules:
         return []
-    errors: list[str] = []
-    quicklook = section_text(text, rules["section"])
-    if rules.get("forbid_latex"):
-        latex_pattern = re.compile(r"\$|\\(?:\(|\)|\[|\]|[A-Za-z]+)")
-        if latex_pattern.search(quicklook):
-            errors.append("first-principles quicklook must use plain text and contain no LaTeX")
-
-    visible = re.sub(r"<!--.*?-->", "", strip_code_fences(quicklook), flags=re.S)
-    insight_rule = rules["callouts"]["insight"]
-    novelty_rule = rules["callouts"]["novelty"]
-    insights, card_errors = check_quicklook_callouts(section_text(visible, insight_rule["section"]), insight_rule)
-    errors.extend(card_errors)
-    novelty = section_text(visible, novelty_rule["section"]).strip()
-    absence = re.fullmatch(
-        r"> \[!example\] 未识别到可独立成立的 Novelty\n((?:>[^\n]*(?:\n|$))+)", novelty
-    )
-    if absence:
-        explanation = re.sub(r"(?m)^>\s?", "", absence.group(1)).strip()
-        if len(explanation) < 20 or re.search(r"(?m)^> \[!", absence.group(1)):
-            errors.append("no independent Novelty callout must explain the reason and evidence boundary")
-    else:
-        novelties, card_errors = check_quicklook_callouts(novelty, novelty_rule)
-        errors.extend(card_errors)
-        for item_id, fields in novelties.items():
-            references = re.findall(r"(?<![A-Za-z0-9])I[0-9]+(?![0-9])", fields.get("对应洞见", ""))
-            if not references or any(reference not in insights for reference in references):
-                errors.append(f"{item_id} must reference existing Insight IDs in 对应洞见")
-
-    motivation = section_text(text, rules["motivation_section"])
-    if "？" not in motivation and "?" not in motivation:
-        errors.append("quicklook Motivation must reconstruct the idea path as a question")
-    return errors
+    visible = re.sub(r"<!--.*?-->", "", strip_code_fences(text), flags=re.S)
+    quicklook = section_text(visible, rules["section"])
+    if not explanatory_prose(quicklook):
+        return ["method overview needs visible explanatory prose; readability requires writer review"]
+    return []
 
 
 def normalize_target(raw: str) -> str:
